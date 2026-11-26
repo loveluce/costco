@@ -71,7 +71,7 @@ export async function writePrice(row, inviteCode) {
   const body = JSON.stringify({...record,inviteCode:inviteCode.trim()});
   // The POST is opaque. Confirm the exact submission by its public receipt ID.
   try {
-    await fetch(url,{method:'POST',mode:'no-cors',credentials:'omit',redirect:'manual',body,
+    await fetch(url,{method:'POST',mode:'no-cors',credentials:'omit',redirect:'follow',body,
       headers:{'Content-Type':'text/plain;charset=UTF-8'},signal:AbortSignal.timeout(25000)});
   } catch { /* A timeout may occur after the sheet already committed the row. */ }
   for (let attempt=0; attempt<3; attempt++) {
