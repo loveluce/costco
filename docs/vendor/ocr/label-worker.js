@@ -111,7 +111,9 @@ self.onmessage = async ({data}) => {
     recognitionPass = 1;
     await ocr.setParameters({tessedit_pageseg_mode:Tesseract.PSM.SPARSE_TEXT});
     const {data:secondary} = await ocr.recognize(data.image,{rotateAuto:false},{text:true,blocks:true});
-    const response = {type:'result',...mergeReadings(primary,secondary)};
+    // Shelf tags use separated text regions and a large price. Start with sparse
+    // layout to avoid reading parts of one large number as separate lines.
+    const response = {type:'result',...mergeReadings(secondary,primary)};
     await ocr.terminate();
     ocr = null;
     self.postMessage(response);

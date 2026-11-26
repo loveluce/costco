@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#332664">
-  <meta name="description" content="코스트코 가격표를 찍고 가족이 기록한 이전 가격과 네이버 쇼핑 가격을 비교하세요.">
+  <meta name="description" content="코스트코 가격표를 찍고 가족이 기록한 이전 가격과 네이버 쇼핑·쿠팡 가격을 비교하세요.">
   <title>한눈단가 · 우리 집 공동 가격표</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
@@ -40,15 +40,23 @@
     </section>
     <div id="workspace" hidden>
       <p class="hh-status" role="status" id="sync-msg"></p>
+      <p id="online-setup-help" hidden><a class="hh-link" href="./downloads/Google_Sheets_Setup.html" target="_blank" rel="noopener">온라인 저장용 구글 시트 업데이트 방법</a></p>
       <section id="lookup">
         <div class="hh-capture">
-          <div><h1>코스트코 가격 조회</h1><p>가격표를 찍거나 상품을 검색해 이전 가격과 비교하세요.</p></div>
-          <button id="photo" type="button" class="hh-btn hh-camera"><span class="camera-icon" aria-hidden="true"></span>가격표 사진 찍기</button>
+          <div><h1>코스트코 가격 조회</h1><p>가격표를 찍고 이전 가격, 네이버 쇼핑, 쿠팡과 비교하세요.</p></div>
+          <div class="hh-capture-actions">
+            <button id="photo" type="button" class="hh-btn hh-camera"><span class="camera-icon" aria-hidden="true"></span>가격표 사진 찍기</button>
+            <button id="open-online" type="button" class="hh-btn hh-secondary" aria-controls="market-card">네이버·쿠팡 가격 저장</button>
+          </div>
           <form class="hh-search" id="lookup-form" role="search">
-            <label class="hh-vh" for="query">상품명, 코스트코 상품번호 또는 바코드</label>
-            <input id="query" type="search" placeholder="상품명 · 코스트코 상품번호 · 바코드" maxlength="140" autocomplete="off">
+            <label class="hh-vh" for="query">상품명, 상품번호, 바코드 또는 네이버·쿠팡 상품 링크</label>
+            <input id="query" type="search" placeholder="상품명 · 번호 · 네이버/쿠팡 상품 링크" maxlength="2000" autocomplete="off">
             <button class="hh-btn">조회</button>
           </form>
+          <div id="online-shortcuts" class="hh-search-sites" hidden>
+            <a id="lookup-naver" target="_blank" rel="noopener noreferrer">네이버 쇼핑에서 찾기 ↗</a>
+            <a id="lookup-coupang" target="_blank" rel="noopener noreferrer">쿠팡에서 찾기 ↗</a>
+          </div>
         </div>
         <button type="button" data-view="alerts" id="home-alert" class="hh-callout hh-home-alert" hidden></button>
         <p id="lookup-msg" class="hh-status" role="status"></p>
@@ -62,10 +70,10 @@
           <button id="manual" type="button" class="hh-btn hh-secondary">직접 가격 입력</button>
         </div>
         <div id="product-work" hidden>
-          <nav class="hh-jumps" aria-label="상품 비교 바로가기"><a href="#entry-card">가격 입력</a><a href="#previous-card">이전 가격</a><a href="#naver-card">네이버 비교</a></nav>
+          <nav class="hh-jumps" aria-label="상품 비교 바로가기"><a href="#entry-card">가격 입력</a><a href="#previous-card">이전 가격</a><a href="#market-card" data-market-jump="naver">네이버 비교</a><a href="#market-card" data-market-jump="coupang">쿠팡 비교</a></nav>
           <div class="hh-columns">
             <section class="hh-card" id="entry-card">
-              <div class="hh-title"><h2>상품과 가격</h2><button id="clear" type="button" class="hh-link">새로 입력</button></div>
+              <div class="hh-title"><h2 id="entry-heading">상품과 가격</h2><button id="clear" type="button" class="hh-link">새로 입력</button></div>
               <form id="record" class="hh-grid">
                 <label class="hh-wide">상품명<input name="product" required maxlength="140" placeholder="가격표에 적힌 상품명"></label>
                 <label>코스트코 상품번호<input name="itemNo" inputmode="numeric" maxlength="32" placeholder="예: 123456"></label>
@@ -88,19 +96,28 @@
                 </fieldset>
                 <p class="hh-wide hh-note" id="purchase-hint"></p>
                 <label class="hh-wide"><span id="day-label">가격 확인일</span><input name="day" type="date" required></label>
-                <button id="save" class="hh-btn hh-primary hh-wide">공동 기록에 저장</button>
+                <button id="save" class="hh-btn hh-primary hh-wide">코스트코 가격 저장</button>
                 <p id="save-msg" role="status" class="hh-status hh-wide"></p>
               </form>
             </section>
             <div class="hh-stack hh-side">
               <section class="hh-card" id="previous-card"><h2>이전 가격 비교</h2><div id="previous"></div><div id="preview-alert"></div></section>
-              <section class="hh-card hh-naver" id="naver-card">
-                <h2>네이버 쇼핑과 비교</h2>
+              <section class="hh-card hh-market" id="market-card">
+                <h2>온라인 가격 비교</h2>
+                <label>쇼핑몰 검색어<input id="market-query" type="search" maxlength="200" placeholder="코스트코 상품명"></label>
+                <p class="hh-note">같은 용량·규격의 상품을 골라 두 곳 모두 병, 팩, 매 등 같은 기준으로 개수를 입력하세요.</p>
+                <div class="hh-market-tabs" role="tablist" aria-label="비교할 쇼핑몰">
+                  <button type="button" role="tab" id="market-tab-naver" aria-selected="true" aria-controls="naver-card">네이버 쇼핑</button>
+                  <button type="button" role="tab" id="market-tab-coupang" aria-selected="false" aria-controls="coupang-card" tabindex="-1">쿠팡</button>
+                </div>
+                <div class="hh-market-panel" id="naver-card" role="tabpanel" aria-labelledby="market-tab-naver">
                 <div class="hh-shop-links">
                   <a id="naver-search" class="hh-btn hh-naver-btn" target="_blank" rel="noopener noreferrer" hidden>네이버 쇼핑 검색 ↗</a>
                   <a id="naver-fallback" class="hh-link" target="_blank" rel="noopener noreferrer" hidden>네이버 통합검색 ↗</a>
                 </div>
-                <p class="hh-note">낱개 규격이 같은 상품을 선택하고 가격·수량·배송비를 입력하세요. 두 곳의 개수는 모두 병, 팩, 매 등 같은 기준으로 입력하세요.</p>
+                <label>상품 링크<input type="url" inputmode="url" autocomplete="off" maxlength="2000" id="naver-url" placeholder="상품의 공유 링크를 붙여넣으세요"></label>
+                <div class="hh-title"><small class="hh-meta">붙여넣으면 쇼핑몰을 인식해 공동 기록에 저장해요.</small><button type="button" class="hh-link" id="naver-read">링크 읽기</button></div>
+                <label>온라인 상품명 · 옵션<input id="naver-title" maxlength="200" placeholder="선택한 상품과 묶음 구성"></label>
                 <details class="hh-detail" id="naver-paste-box"><summary>네이버 상품 정보 붙여넣기</summary>
                   <label for="naver-text" class="hh-vh">네이버 상품 정보</label>
                   <textarea id="naver-text" rows="3" maxlength="12000" placeholder="상품 가격·수량·배송비가 있는 내용을 붙여넣으세요"></textarea>
@@ -113,15 +130,52 @@
                 </div>
                 <div class="hh-metric"><span>네이버 배송비 포함 개당</span><strong id="naver-unit">—</strong></div>
                 <p id="naver-result" class="hh-note"></p>
+                <label>온라인 가격 확인일<input id="naver-day" type="date"></label>
+                <div class="hh-offer-actions"><button type="button" class="hh-btn hh-primary" id="naver-save">온라인 가격 저장</button><button type="button" class="hh-link" id="naver-new" hidden>새 가격 입력</button></div>
+                <p id="naver-status" class="hh-status" role="status"></p>
+                <div id="naver-saved" class="hh-list" aria-label="저장된 네이버 가격"></div>
+                </div>
+                <div class="hh-market-panel" id="coupang-card" role="tabpanel" aria-labelledby="market-tab-coupang" hidden>
+                <div class="hh-shop-links">
+                  <a id="coupang-search" class="hh-btn hh-coupang-btn" target="_blank" rel="noopener noreferrer" hidden>쿠팡 상품 검색 ↗</a>
+                </div>
+                <p class="hh-note">로켓배송을 원하면 쿠팡 검색 결과에서 로켓배송 필터를 선택하세요. 같은 용량·옵션을 고르고 내 계정에 적용되는 가격과 배송비를 확인하세요.</p>
+                <label>상품 링크<input type="url" inputmode="url" autocomplete="off" maxlength="2000" id="coupang-url" placeholder="상품의 공유 링크를 붙여넣으세요"></label>
+                <div class="hh-title"><small class="hh-meta">붙여넣으면 쇼핑몰을 인식해 공동 기록에 저장해요.</small><button type="button" class="hh-link" id="coupang-read">링크 읽기</button></div>
+                <label>온라인 상품명 · 옵션<input id="coupang-title" maxlength="200" placeholder="선택한 상품과 묶음 구성"></label>
+                <details class="hh-detail" id="coupang-paste-box"><summary>쿠팡 상품 정보 붙여넣기</summary>
+                  <label for="coupang-text" class="hh-vh">쿠팡 상품 정보</label>
+                  <textarea id="coupang-text" rows="3" maxlength="12000" placeholder="상품 가격·수량·배송비가 있는 내용을 붙여넣으세요"></textarea>
+                  <button type="button" class="hh-btn hh-secondary" id="parse-coupang">가격·수량 읽기</button>
+                  <p class="hh-note" id="coupang-parse-msg" role="status"></p></details>
+                <div class="hh-grid">
+                  <label>상품 가격 (원)<input id="coupang-price" type="number" min="1" step="1" placeholder="상품 총액"></label>
+                  <label>묶음 개수<input id="coupang-count" type="number" min="1" step="1" placeholder="예: 12"></label>
+                  <label class="hh-wide">배송비 (원)<input id="coupang-shipping" type="number" min="0" step="1" placeholder="무료 배송이면 0"></label>
+                </div>
+                <div class="hh-metric"><span>쿠팡 배송비 포함 개당</span><strong id="coupang-unit">—</strong></div>
+                <p id="coupang-result" class="hh-note"></p>
+                <label>온라인 가격 확인일<input id="coupang-day" type="date"></label>
+                <div class="hh-offer-actions"><button type="button" class="hh-btn hh-primary" id="coupang-save">온라인 가격 저장</button><button type="button" class="hh-link" id="coupang-new" hidden>새 가격 입력</button></div>
+                <p id="coupang-status" class="hh-status" role="status"></p>
+                <div id="coupang-saved" class="hh-list" aria-label="저장된 쿠팡 가격"></div>
+                </div>
+                <div id="online-summary" class="hh-quote-summary" hidden>
+                  <h3>개당 단가 비교</h3>
+                  <dl id="online-summary-list"></dl>
+                  <p class="hh-note" id="online-summary-text"></p>
+                </div>
               </section>
             </div>
           </div>
         </div>
       </section>
       <section id="history" hidden>
-        <div class="hh-page-heading"><div><h1>공동 가격 기록</h1><p>가족이 저장한 매장 가격과 실제 구매 이력을 확인하세요.</p></div><button type="button" class="hh-btn hh-secondary" data-reload>새로고침</button></div>
+        <div class="hh-page-heading"><div><h1>공동 가격 기록</h1><p>가족이 저장한 코스트코·네이버·쿠팡 가격을 조회하고 수정할 수 있어요.</p></div><button type="button" class="hh-btn hh-secondary" data-reload>새로고침</button></div>
         <div class="hh-card"><label class="hh-search-label">공동 기록 검색<input type="search" id="history-query" placeholder="상품명 · 상품번호 · 바코드"></label>
-          <div class="hh-list" id="history-list"></div><button class="hh-btn hh-secondary" type="button" id="more-history" hidden>더 보기</button></div>
+          <h3>코스트코 매장 기록</h3><div class="hh-list" id="history-list"></div><button class="hh-btn hh-secondary" type="button" id="more-history" hidden>더 보기</button></div>
+        <div class="hh-card"><h3>네이버·쿠팡 온라인 기록</h3><div id="offer-history" class="hh-list"></div>
+          <button class="hh-btn hh-secondary" type="button" id="more-offers" hidden>더 보기</button></div>
       </section>
       <section id="alerts" hidden>
         <div class="hh-page-heading"><div><h1>가격 인하 알림</h1><p>가족이 실제로 구매한 뒤 같은 매장에서 더 낮은 가격을 기록한 상품이에요.</p></div><button class="hh-btn hh-secondary" type="button" data-reload>새로고침</button></div>

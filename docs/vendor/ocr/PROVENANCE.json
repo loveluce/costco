@@ -36,7 +36,7 @@
     "label-worker.js"
   ],
   "privacy": "Only same-origin runtime and model files are downloaded. User images are decoded, resized, and recognized in local browser workers; the OCR module does not upload image data, write it to browser storage, or call a remote OCR service.",
-  "recognition": "Korean+English LSTM. Two layout passes; a line is replaced only by an actual second-pass line with substantial geometric overlap and a higher recognition confidence. Results require user review.",
+  "recognition": "Korean+English LSTM. Sparse-layout OCR with a single-block cross-check. A line is replaced only by a reading with substantial geometric overlap and higher recognition confidence. Results require user review.",
   "assets": [
     {
       "path": "ENG-MODEL-COPYRIGHT.txt",
@@ -95,8 +95,8 @@
     },
     {
       "path": "label-worker.js",
-      "bytes": 5910,
-      "sha256": "c1c40f3a0fd80bd83a5727d9584e3e4dc29089673ec5a1b77dfd3e33e2b860e8"
+      "bytes": 6068,
+      "sha256": "0ba6f90a238e7c42a27575a11fef4a5d07c8082f7e5099f428286a3604f5082c"
     },
     {
       "path": "lang/eng.traineddata",

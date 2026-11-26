@@ -152,7 +152,7 @@ async function call(action, fields) {
   if (!base) throw error('SETUP','운영자가 웹 앱 /exec 주소를 연결해야 합니다.');
   const ticket = randomKey();
   const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(),25000);
+  const timer = setTimeout(()=>controller.abort(),action === 'importOffer' ? 55000 : 25000);
   try {
     await fetch(base,{method:'POST',credentials:'omit',mode:'no-cors',redirect:'follow',
       referrerPolicy:'no-referrer', headers:{'Content-Type':'text/plain;charset=UTF-8'},
@@ -229,7 +229,7 @@ function currentToken() {
 }
 
 export function listPrices(before=null) {
-  return call('list',{token:currentToken(),before});
+  return call('list',{token:currentToken(),before,includeOffers:before==null});
 }
 
 export async function savePrice(input) {
@@ -241,4 +241,17 @@ export async function savePrice(input) {
   const saved = await call('save',{token,row:{...input,submission:request.submission}});
   if (pendingSave === request) pendingSave = null;
   return saved;
+}
+
+
+export function listOnlinePrices(before) {
+  return call('listOffers',{token:currentToken(),before});
+}
+
+export function saveOnlinePrice(row,version,readLink) {
+  return call(readLink ? 'importOffer' : 'saveOffer',{token:currentToken(),row,version});
+}
+
+export function updatePrice(row,original) {
+  return call('updatePrice',{token:currentToken(),row,original});
 }

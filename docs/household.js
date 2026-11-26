@@ -1,10 +1,18 @@
-import {isConfigured, hasSession, login, logout, listPrices, savePrice} from './household-api.js';
+import {isConfigured, hasSession, login, logout, listPrices, listOnlinePrices, savePrice, updatePrice} from './household-api.js';
 import {openPhotoImport} from './photo-import.js';
 import {normalizeGtin} from './barcode.js';
 import {today} from './core.js';
-import {naverComparison, perPiece, previousPrices, priceMatchAlerts, searchHistory} from './household-prices.js';
+import {naverComparison as compareOffer, perPiece, previousPrices, priceMatchAlerts, searchHistory} from './household-prices.js';
 import {naverShoppingUrl, naverSearchUrl, parseNaverListing} from './household-naver.js';
+import {coupangSearchUrl, parseCoupangListing} from './household-shopping.js';
 import {initLegacyImport} from './legacy-import.js';
+
+import {initOnlineRecords, clipboardListing, sharedListing} from './online-records.js';
+
+const markets = [
+  {id:'naver',name:'네이버',search:naverShoppingUrl,parse:parseNaverListing},
+  {id:'coupang',name:'쿠팡',search:coupangSearchUrl,parse:parseCoupangListing},
+];
 
 const el = id => document.getElementById(id);
 const record = el('record');
@@ -20,6 +28,17 @@ let epoch = 0, revision = 0, view = 'lookup', active = false, saving = false;
 let lastLoad = 0, loadPromise = null, importMounted = false;
 let retry = null, savedSignature = '', photoDraft = false;
 let previewUUID = crypto.randomUUID();
+let editingCostco = null, selectedParent = '', customSearch = null, typingLookup = false;
+const online = initOnlineRecords({
+  context:offerContext, costcoRows:()=>rows, epoch:()=>epoch, active:()=>active, onAuthError:sessionError,
+  onWrite:()=>{ revision++; loadPromise=null; lastLoad=0; void loadRows(true); },
+  openProduct:openOfferProduct, update:updateComparisons, showMarket, amount
+});
+
+function offerContext() {
+  const d=draftValues();
+  return {product:d.product,pack:d.pack,itemNo:d.itemNo,barcode:d.barcode,parent:selectedParent || previewUUID};
+}
 
 function node(tag, txt = '', cls = '') {
   const n = document.createElement(tag);
@@ -45,16 +64,19 @@ function showView(which, scroll = true) {
 function authScreen(message = '') {
   active = false; epoch++; revision++; loadPromise = null; saving = false; lastLoad = 0;
   rows = []; alertItems = []; resultsFor = null; importMounted = false;
+  online.clear();
   if (el('photo-dialog').open) el('photo-dialog').close();
   el('photo-dialog').replaceChildren();
-  for (const id of ['naver-unit','unit-value','naver-result','home-alert','nav-count','match-count','purchase-hint']) el(id).textContent = '';
-  el('naver-search').removeAttribute('href'); el('naver-fallback').removeAttribute('href');
+  for (const id of ['unit-value','home-alert','nav-count','match-count','purchase-hint']) el(id).textContent = '';
+  setSearchLink('naver-fallback','');
   for (const element of record.elements) element.disabled = false;
   for (const id of ['recent','matches','history-list','alert-list','previous','preview-alert','shops','legacy-content']) el(id).replaceChildren();
   el('workspace').hidden = el('exit').hidden = el('nav').hidden = el('legacy-import').hidden = true;
   el('lock').hidden = false;
+  el('online-setup-help').hidden = true;
   el('pass').value = ''; el('remember').checked = el('remember').defaultChecked; el('query').value = ''; el('history-query').value = '';
   historyLimit = rowsPerPage;
+  updateShortcuts();
   clearDraft();
   status('lookup-msg'); status('sync-msg'); status('login-msg',message);
 }
@@ -100,11 +122,17 @@ async function loadRows(force = false) {
   status('sync-msg','공동 가격 기록을 불러오고 있어요.');
   const promise = (async () => {
     try {
-      const all = [], seenCursors = new Set();
-      let cursor = null;
+      const all = [], allOffers = [], seenCursors = new Set();
+      let cursor = null, offerPage, onlineError='';
       do {
         const page = await listPrices(cursor);
         if (!current()) return;
+        if (cursor==null) {
+          offerPage=page.offers; onlineError=page.offersError || '';
+          const oldServer=!offerPage && !onlineError;
+          el('online-setup-help').hidden=!oldServer;
+          if (oldServer) onlineError='연결된 구글 시트 웹 앱이 이전 버전이에요. 온라인 가격을 저장하려면 Apps Script를 업데이트하세요.';
+        }
         all.push(...page.rows);
         cursor = page.next;
         if (cursor != null) {
@@ -112,12 +140,29 @@ async function loadRows(force = false) {
           seenCursors.add(cursor);
         }
       } while (cursor != null);
+      if (offerPage) {
+        try {
+          const offerCursors=new Set();
+          while (offerPage) {
+            allOffers.push(...offerPage.rows);
+            if (offerPage.next==null) break;
+            if (offerCursors.has(offerPage.next)) throw new Error('온라인 기록 페이지를 읽지 못했어요.');
+            offerCursors.add(offerPage.next);
+            offerPage=await listOnlinePrices(offerPage.next);
+            if (!current()) return;
+          }
+          online.replace(allOffers);
+        } catch (err) {
+          if (err.code==='AUTH') throw err;
+          onlineError=err.message;
+        }
+      } else if (onlineError) online.replace([],onlineError);
       rows = all; lastLoad = Date.now();
       if (!importMounted) {
         initLegacyImport({onImported: () => loadRows(true), isAuthorized: () => active && hasSession()});
         importMounted = true;
       }
-      redraw(); status('sync-msg');
+      redraw(); status('sync-msg',onlineError,Boolean(onlineError));
     } catch (err) {
       if (current() && !sessionError(err)) status('sync-msg',err.message || '가격 이력을 불러오지 못했어요. 새로고침해 주세요.',true);
     } finally { if (current()) loadPromise = null; }
@@ -147,21 +192,97 @@ function draftValues() {
 }
 function draftRow() {
   const values = draftValues();
-  const submission = savedSignature && retry?.signature === JSON.stringify(values) ? retry.submission : previewUUID;
+  const submission = editingCostco?.submission || (savedSignature && retry?.signature === JSON.stringify(values) ? retry.submission : previewUUID);
   return {...values,submission,saved_at:new Date().toISOString()};
 }
-function clearNaver() {
-  for (const id of ['naver-price','naver-count','naver-shipping','naver-text']) el(id).value = '';
-  el('naver-paste-box').open = false;
-  el('naver-parse-msg').textContent = '';
+function setSearchLink(id, url) {
+  const link = el(id);
+  link.hidden = !url;
+  if (url) link.href = url;
+  else link.removeAttribute('href');
+}
+function shoppingQuery(draft) {
+  return (customSearch ?? (draft.product || draft.barcode || draft.itemNo || '')).trim();
+}
+function updateShortcuts() {
+  const query = !active ? '' : typingLookup || el('product-work').hidden ? el('query').value.trim() : shoppingQuery(draftValues());
+  el('online-shortcuts').hidden = !query;
+  for (const market of markets) setSearchLink('lookup-'+market.id, market.search(query));
+}
+function pasteQuickOffer(clip, typed) {
+  if (!active || saving || !clip) return false;
+  if (el('product-work').hidden || typingLookup) {
+    const product=typed && !typed.includes('https://') ? typed.trim().slice(0,140) : '';
+    openDraft({product}); resultsFor=null; el('query').value=product;
+  }
+  typingLookup=false;
+  showView('lookup',false); showMarket(clip.market); updateComparisons();
+  online.importLink(clip.market,clip);
+  el(clip.market+'-url').scrollIntoView({block:'center'});
+  return true;
+}
+el('query').addEventListener('paste',event=>{
+  if (pasteQuickOffer(clipboardListing(event.clipboardData),el('query').value)) event.preventDefault();
+});
+el('query').addEventListener('input', event => {
+  if (event.inputType==='insertFromPaste' && pasteQuickOffer(sharedListing(el('query').value),'')) return;
+  typingLookup=true; updateShortcuts();
+});
+el('market-query').addEventListener('input', () => {
+  customSearch=el('market-query').value; typingLookup=false; updateComparisons();
+});
+el('market-query').addEventListener('blur', () => {
+  if (customSearch!==null && !customSearch.trim()) { customSearch=null; updateComparisons(); }
+});
+
+function showMarket(id) {
+  for (const market of markets) {
+    const selected = market.id === id;
+    const tab = el('market-tab-'+market.id);
+    tab.setAttribute('aria-selected',String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    el(market.id+'-card').hidden = !selected;
+  }
+}
+for (const [i,market] of markets.entries()) {
+  const tab = el('market-tab-'+market.id);
+  tab.addEventListener('click',() => showMarket(market.id));
+  tab.addEventListener('keydown',event => {
+    const steps = {ArrowLeft:-1, ArrowRight:1, Home:-i, End:markets.length-1-i};
+    const step = steps[event.key];
+    if (typeof step !== 'number') return;
+    event.preventDefault();
+    const next = markets[(i+step+markets.length)%markets.length].id;
+    showMarket(next);
+    el('market-tab-'+next).focus();
+  });
+}
+document.querySelectorAll('[data-market-jump]').forEach(link => link.addEventListener('click',() => showMarket(link.dataset.marketJump)));
+function clearMarketQuotes() {
+  for (const {id} of markets) {
+    for (const key of ['price','count','shipping','text']) el(id+'-'+key).value = '';
+    el(id+'-paste-box').open = false;
+    el(id+'-parse-msg').textContent = '';
+    el(id+'-unit').textContent = '—';
+    el(id+'-result').textContent = '';
+    setSearchLink(id+'-search','');
+  }
+  el('online-summary').hidden = true;
+  el('online-summary-list').replaceChildren();
+  el('online-summary-text').textContent = '';
 }
 function clearDraft() {
+  online.reset();
+  editingCostco=null; selectedParent=''; customSearch=null; typingLookup=false;
+  el('market-query').value='';
+  el('entry-heading').textContent='상품과 가격';
+  el('save').textContent='코스트코 가격 저장';
   record.reset(); field('day').value = today(); field('day').max = today();
   el('day-label').textContent = '가격 확인일';
   el('quantity-detail').open = false;
   el('printed').textContent = ''; el('printed').hidden = true; el('barcode-status').textContent = '';
   savedSignature = ''; retry = null; previewUUID = crypto.randomUUID(); photoDraft = false;
-  clearNaver(); status('save-msg');
+  clearMarketQuotes(); showMarket('naver'); status('save-msg');
   el('product-work').hidden = el('matches-panel').hidden = true;
   el('welcome').hidden = false;
 }
@@ -169,6 +290,23 @@ function openDraft(values = {}) {
   clearDraft(); el('welcome').hidden = true; el('product-work').hidden = false;
   for (const [key,value] of Object.entries(values)) if (field(key)) field(key).value = value ?? '';
   el('quantity-detail').open = Boolean(field('unit').value || field('quantity').value);
+}
+function editCostco(row) {
+  if (saving) return;
+  openDraft({...row,kind:row.purchasedOn?'purchased':'observed',day:row.purchasedOn||row.observedOn});
+  editingCostco=row; selectedParent=row.submission; resultsFor=null;
+  el('entry-heading').textContent='코스트코 기록 수정'; el('save').textContent='수정 저장';
+  el('query').value=row.product; showView('lookup'); updateComparisons();
+  el('entry-card').scrollIntoView({block:'start'});
+}
+function openOfferProduct(offer) {
+  if (saving || !active) return false;
+  const parent=rows.find(r=>r.submission===offer.parent);
+  if (parent) { selectRow(parent); return; }
+  openDraft({product:offer.product,pack:offer.pack,itemNo:offer.itemNo,barcode:offer.barcode});
+  selectedParent=offer.parent; resultsFor=null; el('query').value=offer.product;
+  if (!offer.product && offer.title) { customSearch=offer.title; el('market-query').value=offer.title; }
+  showView('lookup'); updateComparisons();
 }
 function recordButton(row, action) {
   const btn = node('button','','hh-row'); btn.type = 'button';
@@ -186,7 +324,14 @@ function renderRows(id, records, empty, action, limit = records.length) {
   const container = el(id);
   container.replaceChildren();
   if (!records.length) { container.append(node('p',empty,'hh-empty')); return; }
-  for (const row of records.slice(0,limit)) container.append(recordButton(row,action));
+  for (const row of records.slice(0,limit)) {
+    const pick=recordButton(row,action);
+    if (id!=='history-list') { container.append(pick); continue; }
+    const wrapper=node('div','','hh-edit-row'), edit=node('button','수정','hh-link');
+    edit.type='button'; edit.setAttribute('aria-label',row.product+' 매장 기록 수정');
+    edit.addEventListener('click',()=>editCostco(row));
+    wrapper.append(pick,edit); container.append(wrapper);
+  }
 }
 function selectRow(row, fromScan = false) {
   if (saving) return;
@@ -203,6 +348,7 @@ function selectRow(row, fromScan = false) {
     openDraft(values);
     status('lookup-msg','이 상품의 이전 기록을 불러왔어요. 새 가격을 기록할 때는 현재 판매가를 입력하세요.');
   }
+  selectedParent=row.submission;
   resultsFor = null; el('matches-panel').hidden = true;
   el('query').value = field('product').value;
   showView('lookup');
@@ -225,6 +371,7 @@ function search() {
   if (saving) return;
   const query = el('query').value.trim();
   if (!query) { status('lookup-msg','상품명, 상품번호 또는 바코드를 입력하세요.',true); el('query').focus(); return; }
+  if (pasteQuickOffer(sharedListing(query),'')) return;
   const digits = /^#?\d+$/.test(query);
   const gtin = digits ? normalizeGtin(query) : '';
   openDraft(digits ? (gtin ? {barcode:gtin} : {itemNo:query.replace(/^#/,'')}) : {product:query});
@@ -242,6 +389,16 @@ function search() {
   status('lookup-msg'); updateComparisons();
 }
 el('lookup-form').addEventListener('submit', event => { event.preventDefault(); search(); });
+el('open-online').addEventListener('click', () => {
+  if (!active || saving) return;
+  if (el('product-work').hidden || typingLookup) {
+    if (el('query').value.trim()) search();
+    else { resultsFor=null; openDraft(); updateComparisons(); }
+  }
+  const id=el('coupang-card').hidden ? 'naver' : 'coupang';
+  el(id+'-url').focus();
+  el('market-card').scrollIntoView({block:'start'});
+});
 function manual() {
   if (saving) return;
   resultsFor = null; openDraft(); el('query').value = '';
@@ -354,39 +511,73 @@ function updateComparisons() {
     }
   }
 
-  const query = [draft.product,draft.pack].filter(Boolean).join(' ') || draft.barcode || draft.itemNo;
-  for (const [id,url] of [['naver-search',naverShoppingUrl(query)],['naver-fallback',naverSearchUrl(query)]]) {
-    el(id).hidden = !url;
-    if (url) el(id).href = url;
-    else el(id).removeAttribute('href');
-  }
+  const query = shoppingQuery(draft);
+  if (customSearch===null && el('market-query').value!==query) el('market-query').value=query;
+  online.syncProduct();
+  setSearchLink('naver-fallback',naverSearchUrl(query));
+  updateShortcuts();
   const reference = draft.price > 0 ? draft : last;
   const refCount = reference?.pieceCount ?? (reference?.unit === '개' ? reference.quantity : null);
-  const offer = naverComparison(reference?.price,refCount,numberInput(el('naver-price')),numberInput(el('naver-count')),numberInput(el('naver-shipping')));
-  el('naver-unit').textContent = amount(offer.naverPerPiece);
-  const basis = reference && Number.isFinite(offer.costcoPerPiece) ? (reference === draft ? '입력한 코스트코' : displayDay(last)+' 코스트코 기록')+' 개당 '+amount(offer.costcoPerPiece) : '';
-  const diff = offer.savingPerPiece;
-  const summary = diff == null ? '' : diff === 0 ? '두 곳의 개당 가격이 같아요.' : (diff > 0 ? '코스트코' : '네이버')+'가 개당 '+amount(Math.abs(diff))+' 저렴해요.';
-  el('naver-result').textContent = [basis,summary].filter(Boolean).join(' · ');
+  const costcoUnit = perPiece(reference?.price,refCount);
+  const costcoLabel = reference === draft ? '입력한 코스트코' : (last ? displayDay(last)+' 코스트코 기록' : '코스트코');
+  const onlineUnits = [];
+  for (const {id,name,search} of markets) {
+    setSearchLink(id+'-search',search(query));
+    const offer = compareOffer(reference?.price,refCount,numberInput(el(id+'-price')),
+      numberInput(el(id+'-count')),numberInput(el(id+'-shipping')));
+    const unit = offer.naverPerPiece;
+    el(id+'-unit').textContent = amount(unit);
+    const basis = costcoUnit == null ? '' : costcoLabel+' 개당 '+amount(costcoUnit);
+    const diff = offer.savingPerPiece;
+    let message = '';
+    if (diff === 0) message = '두 곳의 개당 가격이 같아요.';
+    else if (diff != null) message = (diff > 0 ? '코스트코가' : name+(id === 'coupang' ? '이' : '가'))+' 개당 '+amount(Math.abs(diff))+' 저렴해요.';
+    el(id+'-result').textContent = [basis,message].filter(Boolean).join(' · ');
+    if (unit != null) onlineUnits.push({label:name,unit});
+  }
+  renderQuoteSummary(costcoLabel,costcoUnit,onlineUnits);
   el('save').disabled = saving || (savedSignature !== '' && savedSignature === JSON.stringify(draftValues()));
 }
-record.addEventListener('input', () => {
+record.addEventListener('input', event => {
+  if (event.target===field('product')) {
+    customSearch=null; typingLookup=false;
+    el('query').value=field('product').value;
+    if (photoDraft && resultsFor) { resultsFor=draftValues(); showMatches(); }
+  }
   status('save-msg');
   if (retry?.signature !== JSON.stringify(draftValues())) { savedSignature = ''; }
   updateComparisons();
 });
 record.addEventListener('change', updateComparisons);
-for (const id of ['naver-price','naver-count','naver-shipping']) el(id).addEventListener('input',updateComparisons);
-el('parse-naver').addEventListener('click', () => {
-  const data = parseNaverListing(el('naver-text').value);
-  for (const [key,id] of [['price','naver-price'],['pieces','naver-count'],['shipping','naver-shipping']]) {
-    el(id).value = data[key] ?? '';
+function renderQuoteSummary(costcoLabel,costcoUnit,onlineUnits) {
+  const panel = el('online-summary'), list = el('online-summary-list');
+  panel.hidden = onlineUnits.length < 2;
+  list.replaceChildren();
+  if (panel.hidden) return;
+  const quotes = costcoUnit == null ? onlineUnits : [{label:costcoLabel,unit:costcoUnit},...onlineUnits];
+  for (const {label,unit} of quotes) {
+    const row = node('div');
+    row.append(node('dt',label),node('dd',amount(unit)));
+    list.append(row);
   }
-  const labels = [['price','상품 가격'],['pieces','묶음 개수'],['shipping','배송비']];
-  const missing = labels.filter(([key]) => data[key] == null).map(([,label]) => label);
-  el('naver-parse-msg').textContent = missing.length ? missing.join('·')+'를 직접 확인해 입력하세요.' : '읽은 상품 가격·개수·배송비를 확인하세요.';
-  updateComparisons();
-});
+  const [naver,coupang] = onlineUnits;
+  const diff = naver.unit-coupang.unit;
+  el('online-summary-text').textContent = diff === 0 ? '두 온라인 상품의 배송비 포함 개당 가격이 같아요.' :
+    (diff > 0 ? '쿠팡이' : '네이버가')+' 개당 '+amount(Math.abs(diff))+' 저렴해요.';
+}
+for (const {id,parse} of markets) {
+  for (const key of ['price','count','shipping']) el(id+'-'+key).addEventListener('input',updateComparisons);
+  el('parse-'+id).addEventListener('click', () => {
+    const data = parse(el(id+'-text').value);
+    online.markDirty(id);
+    for (const [key,input] of [['price','price'],['pieces','count'],['shipping','shipping']])
+      el(id+'-'+input).value = data[key] ?? '';
+    const labels = [['price','상품 가격'],['pieces','묶음 개수'],['shipping','배송비']];
+    const missing = labels.filter(([key]) => data[key] == null).map(([,label]) => label);
+    el(id+'-parse-msg').textContent = missing.length ? missing.join('·')+'를 직접 확인해 입력하세요.' : '읽은 상품 가격·개수·배송비를 확인하세요.';
+    updateComparisons();
+  });
+}
 
 function renderHistory() {
   const hits = searchHistory(rows,el('history-query').value);
@@ -394,6 +585,7 @@ function renderHistory() {
   el('more-history').hidden = hits.length <= historyLimit;
 }
 function redraw() {
+  online.renderHistory();
   renderRows('recent',searchHistory(rows,''),'아직 저장한 가격이 없어요.',row => selectRow(row),4);
   const stores = [...new Set(rows.map(row => row.shop).filter(Boolean))].sort();
   el('shops').replaceChildren(...stores.map(name => { const opt = node('option'); opt.value = name; return opt; }));
@@ -407,6 +599,8 @@ record.addEventListener('submit', async event => {
   if (!active || !hasSession()) { sessionError({code:'AUTH'}); return; }
   if (saving || !record.reportValidity()) return;
   const data = draftValues();
+  if (editingCostco?.purchasedOn && data.purchasedOn && editingCostco.observedOn!==editingCostco.purchasedOn)
+    data.observedOn=editingCostco.observedOn;
   if (data.barcode && !normalizeGtin(data.barcode)) {
     status('save-msg','바코드 숫자와 길이를 확인하세요. 코스트코 상품번호는 왼쪽 상품번호 칸에 입력하세요.',true);
     field('barcode').focus(); return;
@@ -420,20 +614,27 @@ record.addEventListener('submit', async event => {
   }
   const sig = JSON.stringify(data);
   if (sig === savedSignature) return;
-  if (retry?.signature !== sig) retry = {signature:sig,submission:crypto.randomUUID()};
+  if (retry?.signature !== sig) {
+    const existing=Boolean(retry) || rows.some(r=>r.submission===previewUUID);
+    retry = {signature:sig,submission:editingCostco?.submission || (existing?crypto.randomUUID():previewUUID)};
+  }
   const token = epoch, submission = retry.submission;
   saving = true; el('save').disabled = true;
   const controls = [...record.elements].filter(x => !x.disabled);
   for (const control of controls) control.disabled = true;
   status('save-msg','공동 가격표에 저장하고 있어요.');
   try {
-    const saved = await savePrice({...data,submission});
+    const editing=editingCostco;
+    const input={...data,submission};
+    const saved = editing ? await updatePrice(input,editing) : await savePrice(input);
     if (epoch !== token || !active) return;
     revision++; loadPromise = null;
     rows = [saved,...rows.filter(row => row.submission !== submission)];
     savedSignature = sig;
+    if (editing) editingCostco=saved;
+    selectedParent=saved.submission;
     redraw();
-    status('save-msg','공동 가격표에 저장했어요. 가족이 ‘공동 기록’에서 볼 수 있어요.');
+    status('save-msg',editing ? '기존 코스트코 기록을 수정했어요.' : '공동 가격표에 저장했어요. 가족이 ‘공동 기록’에서 볼 수 있어요.');
     loadRows(true);
   } catch (err) {
     if (epoch === token && !sessionError(err)) status('save-msg',err.message || '저장을 확인하지 못했어요. 같은 내용으로 다시 시도하세요.',true);
