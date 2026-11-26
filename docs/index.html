@@ -3,21 +3,137 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#6355d9">
-  <meta name="description" content="자주 사는 생필품의 코스트코·쿠팡·네이버 공식몰 가격을 날짜별로 기록하고 비교하세요.">
-  <title>한눈단가 · 우리 집 생필품 가격 기록</title>
+  <meta name="theme-color" content="#332664">
+  <meta name="description" content="코스트코 가격표를 찍고 가족이 기록한 이전 가격과 네이버 쇼핑 가격을 비교하세요.">
+  <title>한눈단가 · 우리 집 공동 가격표</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./tracker.css">
+  <link rel="stylesheet" href="./household.css">
 </head>
-<body class="tracker">
-  <a class="skip" href="#main">본문으로 이동</a>
-  <div id="app"><main class="loading">생필품 가격 기록을 불러오고 있어요.</main></div>
-  <dialog id="editor" aria-label="상품 및 가격 기록"></dialog>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <noscript>가격 기록을 사용하려면 JavaScript를 켜 주세요.</noscript>
-  <script type="module" src="./start.js"></script>
+<body class="hh">
+  <a class="hh-skip" href="#main">본문으로 이동</a>
+  <header class="hh-bar"><div class="hh-wrap hh-bar-inner">
+    <a class="hh-brand" href="./index.html"><img src="./icon.svg" width="37" height="37" alt="">한눈단가</a>
+    <nav id="nav" aria-label="공동 가격표" hidden>
+      <button type="button" data-view="lookup" aria-current="page">상품 조회</button>
+      <button type="button" data-view="history">공동 기록</button>
+      <button type="button" data-view="alerts">가격 인하 <span id="nav-count" hidden></span></button>
+    </nav>
+    <button id="exit" class="hh-quiet" type="button" hidden>로그아웃</button>
+  </div></header>
+  <main id="main" class="hh-wrap hh-main">
+    <noscript>공동 가격표를 사용하려면 브라우저에서 자바스크립트를 켜 주세요.</noscript>
+    <section id="lock" class="hh-lock">
+      <img width="56" height="56" src="./icon.svg" alt="">
+      <h1>우리 집 공동 가격표</h1>
+      <p>가족 비밀번호를 입력하면 함께 기록한 코스트코 가격을 확인할 수 있어요.</p>
+      <form id="login" class="hh-stack">
+        <label for="pass">공동 비밀번호</label>
+        <input id="pass" type="password" required autocomplete="current-password" placeholder="비밀번호 입력">
+        <label class="hh-remember"><input type="checkbox" id="remember" aria-describedby="remember-hint" checked>이 기기에서 로그인 유지</label>
+        <small id="remember-hint">다음 방문부터 바로 열립니다. 공용 기기에서는 체크를 해제하세요.</small>
+        <button class="hh-btn hh-primary" id="login-btn">가격표 열기</button>
+      </form>
+      <p class="hh-status" role="status" id="login-msg"></p>
+    </section>
+    <div id="workspace" hidden>
+      <p class="hh-status" role="status" id="sync-msg"></p>
+      <section id="lookup">
+        <div class="hh-capture">
+          <div><h1>코스트코 가격 조회</h1><p>가격표를 찍거나 상품을 검색해 이전 가격과 비교하세요.</p></div>
+          <button id="photo" type="button" class="hh-btn hh-camera"><span class="camera-icon" aria-hidden="true"></span>가격표 사진 찍기</button>
+          <form class="hh-search" id="lookup-form" role="search">
+            <label class="hh-vh" for="query">상품명, 코스트코 상품번호 또는 바코드</label>
+            <input id="query" type="search" placeholder="상품명 · 코스트코 상품번호 · 바코드" maxlength="140" autocomplete="off">
+            <button class="hh-btn">조회</button>
+          </form>
+        </div>
+        <button type="button" data-view="alerts" id="home-alert" class="hh-callout hh-home-alert" hidden></button>
+        <p id="lookup-msg" class="hh-status" role="status"></p>
+        <section id="matches-panel" class="hh-card" hidden>
+          <div class="hh-title"><h2>공동 기록 검색 결과</h2><span id="match-count" class="hh-meta"></span></div>
+          <div id="matches" class="hh-list"></div>
+        </section>
+        <div id="welcome" class="hh-card">
+          <div class="hh-title"><h2>최근 공동 기록</h2><button type="button" class="hh-link" data-view="history">전체 보기</button></div>
+          <div id="recent" class="hh-list"></div>
+          <button id="manual" type="button" class="hh-btn hh-secondary">직접 가격 입력</button>
+        </div>
+        <div id="product-work" hidden>
+          <nav class="hh-jumps" aria-label="상품 비교 바로가기"><a href="#entry-card">가격 입력</a><a href="#previous-card">이전 가격</a><a href="#naver-card">네이버 비교</a></nav>
+          <div class="hh-columns">
+            <section class="hh-card" id="entry-card">
+              <div class="hh-title"><h2>상품과 가격</h2><button id="clear" type="button" class="hh-link">새로 입력</button></div>
+              <form id="record" class="hh-grid">
+                <label class="hh-wide">상품명<input name="product" required maxlength="140" placeholder="가격표에 적힌 상품명"></label>
+                <label>코스트코 상품번호<input name="itemNo" inputmode="numeric" maxlength="32" placeholder="예: 123456"></label>
+                <div class="hh-barcode-field"><label>상품 바코드<input name="barcode" inputmode="numeric" maxlength="14" placeholder="바코드 아래 숫자"></label>
+                  <label class="hh-file-label" for="barcode-photo">바코드 사진 추가<input type="file" accept="image/*" capture="environment" id="barcode-photo" aria-label="바코드 사진 추가"></label>
+                </div><p class="hh-note hh-wide" id="barcode-status" role="status"></p>
+                <label>매장<input name="shop" maxlength="140" placeholder="예: 코스트코 일산점" list="shops"></label><datalist id="shops"></datalist>
+                <label>포장 규격<input name="pack" maxlength="140" placeholder="예: 500mL × 12병"></label>
+                <label>한 팩 판매가 (원)<input name="price" type="number" required min="1" max="1000000000" step="1" placeholder="결제할 총액"></label>
+                <label>한 팩에 든 개수<input name="pieceCount" type="number" min="1" max="1000000000" step="1" placeholder="예: 12"></label>
+                <p id="printed" class="hh-note hh-wide" hidden></p>
+                <details class="hh-wide hh-detail" id="quantity-detail"><summary>중량 · 용량 등 총수량</summary>
+                  <div class="hh-grid"><label>총수량<input name="quantity" type="number" min="0.001" step="any" max="1000000000" placeholder="예: 6000"></label>
+                    <label>총수량 단위<select name="unit"><option value="">단위 선택</option><option>g</option><option>kg</option><option>mL</option><option>L</option><option>m</option><option>매</option><option>개</option></select></label></div>
+                </details>
+                <div class="hh-wide hh-metric"><span>계산한 개당 단가</span><strong id="unit-value">—</strong></div>
+                <fieldset class="hh-wide hh-choice"><legend>기록 종류</legend>
+                  <label><input type="radio" name="kind" value="observed" checked>매장 가격 확인</label>
+                  <label><input type="radio" name="kind" value="purchased">실제 구매</label>
+                </fieldset>
+                <p class="hh-wide hh-note" id="purchase-hint"></p>
+                <label class="hh-wide"><span id="day-label">가격 확인일</span><input name="day" type="date" required></label>
+                <button id="save" class="hh-btn hh-primary hh-wide">공동 기록에 저장</button>
+                <p id="save-msg" role="status" class="hh-status hh-wide"></p>
+              </form>
+            </section>
+            <div class="hh-stack hh-side">
+              <section class="hh-card" id="previous-card"><h2>이전 가격 비교</h2><div id="previous"></div><div id="preview-alert"></div></section>
+              <section class="hh-card hh-naver" id="naver-card">
+                <h2>네이버 쇼핑과 비교</h2>
+                <div class="hh-shop-links">
+                  <a id="naver-search" class="hh-btn hh-naver-btn" target="_blank" rel="noopener noreferrer" hidden>네이버 쇼핑 검색 ↗</a>
+                  <a id="naver-fallback" class="hh-link" target="_blank" rel="noopener noreferrer" hidden>네이버 통합검색 ↗</a>
+                </div>
+                <p class="hh-note">낱개 규격이 같은 상품을 선택하고 가격·수량·배송비를 입력하세요. 두 곳의 개수는 모두 병, 팩, 매 등 같은 기준으로 입력하세요.</p>
+                <details class="hh-detail" id="naver-paste-box"><summary>네이버 상품 정보 붙여넣기</summary>
+                  <label for="naver-text" class="hh-vh">네이버 상품 정보</label>
+                  <textarea id="naver-text" rows="3" maxlength="12000" placeholder="상품 가격·수량·배송비가 있는 내용을 붙여넣으세요"></textarea>
+                  <button type="button" class="hh-btn hh-secondary" id="parse-naver">가격·수량 읽기</button>
+                  <p class="hh-note" id="naver-parse-msg" role="status"></p></details>
+                <div class="hh-grid">
+                  <label>상품 가격 (원)<input id="naver-price" type="number" min="1" step="1" placeholder="상품 총액"></label>
+                  <label>묶음 개수<input id="naver-count" type="number" min="1" step="1" placeholder="예: 12"></label>
+                  <label class="hh-wide">배송비 (원)<input id="naver-shipping" type="number" min="0" step="1" placeholder="무료 배송이면 0"></label>
+                </div>
+                <div class="hh-metric"><span>네이버 배송비 포함 개당</span><strong id="naver-unit">—</strong></div>
+                <p id="naver-result" class="hh-note"></p>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="history" hidden>
+        <div class="hh-page-heading"><div><h1>공동 가격 기록</h1><p>가족이 저장한 매장 가격과 실제 구매 이력을 확인하세요.</p></div><button type="button" class="hh-btn hh-secondary" data-reload>새로고침</button></div>
+        <div class="hh-card"><label class="hh-search-label">공동 기록 검색<input type="search" id="history-query" placeholder="상품명 · 상품번호 · 바코드"></label>
+          <div class="hh-list" id="history-list"></div><button class="hh-btn hh-secondary" type="button" id="more-history" hidden>더 보기</button></div>
+      </section>
+      <section id="alerts" hidden>
+        <div class="hh-page-heading"><div><h1>가격 인하 알림</h1><p>가족이 실제로 구매한 뒤 같은 매장에서 더 낮은 가격을 기록한 상품이에요.</p></div><button class="hh-btn hh-secondary" type="button" data-reload>새로고침</button></div>
+        <p class="hh-callout">프라이스 매치는 구매 영수증과 상품번호를 준비해 해당 매장에 차액 조정 가능 여부를 문의하세요.</p>
+        <div id="alert-list" class="hh-list hh-card"></div>
+      </section>
+      <details id="legacy-import" class="hh-card hh-detail" hidden>
+        <summary>이 기기의 예전 코스트코 기록 가져오기</summary><div id="legacy-content"></div>
+      </details>
+    </div>
+  </main>
+  <dialog id="photo-dialog" aria-label="가격표 사진 읽기"></dialog>
+  <script type="module" src="./household.js"></script>
 </body>
 </html>

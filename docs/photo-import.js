@@ -1,4 +1,5 @@
 import {parsePriceLabel} from './label-parser.js';
+import {readRetailBarcodes} from './barcode.js';
 
 const MAX_BYTES=20*1024*1024,MAX_EDGE=2200;
 const camera='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7h4l2-3h6l2 3h4v14H3z"/><circle cx="12" cy="13" r="4"/></svg>';
@@ -10,7 +11,7 @@ export function openPhotoImport({dialog,onRecognized}) {
   dialog.innerHTML=`<div class="dialog-header"><h2>가격표 사진으로 등록</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기">✕</button></div>
     <div class="dialog-body photo-body">
       <div class="photo-steps"><b>1 사진 선택</b><span>2 영역 선택</span><span>3 인식 · 기록</span></div>
-      <p class="small muted">제품명과 가격이 함께 보이는 가격표를 한 장 찍어 주세요. 한글·영문을 읽어 상품 입력란을 채웁니다.</p>
+      <p class="small muted">상품명과 묶음 판매가가 보이게 찍어 주세요. 같은 사진에 바코드가 있으면 함께 읽습니다.</p>
       <div class="photo-pickers"><label class="button primary photo-picker">${camera}사진 촬영<input type="file" accept="image/*" capture="environment" id="photo-camera" aria-label="가격표 사진 촬영"></label><label class="button photo-picker">사진 선택<input type="file" accept="image/*" id="photo-file" aria-label="저장된 가격표 사진 선택"></label></div>
       <div class="photo-workspace hidden" id="photo-workspace">
         <div class="photo-stage" id="photo-stage"><canvas id="photo-canvas" aria-label="선택한 가격표 사진"></canvas><div id="photo-selection" class="photo-selection hidden"></div></div>
@@ -34,12 +35,51 @@ export function openPhotoImport({dialog,onRecognized}) {
   function clearSelection(){selection=null;start=null;el('photo-selection').classList.add('hidden');el('photo-apply-crop').classList.add('hidden');}
   function setCrop(value){cropMode=value;clearSelection();el('photo-crop').setAttribute('aria-pressed',String(value));el('photo-stage').classList.toggle('cropping',value);el('photo-crop-help').textContent=value?'사진 위를 드래그해 제품명과 가격이 들어간 영역을 선택하세요.':'글자가 작으면 가격표 부분만 선택해서 다시 읽어 보세요.';}
   function showCanvas(){const view=el('photo-canvas');view.width=canvas.width;view.height=canvas.height;view.getContext('2d').drawImage(canvas,0,0);el('photo-workspace').classList.remove('hidden');clearSelection();}
-  function finish(text,confidence=null){if(closed)return;const draft=parsePriceLabel(text);if(draft.costcoPrice>0&&draft.costcoQuantity>0&&draft.costcoUnitPrice>0){const calculated=draft.costcoPrice/draft.costcoQuantity*(draft.unit==='100g'||draft.unit==='100mL'?100:1);if(Math.abs(calculated-draft.costcoUnitPrice)>1){draft.costcoUnitPrice=null;draft.warnings.push('인식된 표시 단가가 총액·총량 계산과 달라 직접 단가 칸을 비웠습니다. 묶음 가격과 총량을 사진과 대조하세요.');}}draft.rawText=text.slice(0,12000);draft.confidence=confidence;draft.photoPreview=canvas?preview(canvas):'';clean();onRecognized(draft);}
-  async function recognize(){
-    if(!canvas||busy||closed)return;error('');setCrop(false);setBusy(true);controller=new AbortController();status('한국어 인식기를 준비하고 있어요…');
-    try{const {recognizePriceLabel}=await import('./ocr-engine.js');if(closed)return;const result=await recognizePriceLabel(canvas,{signal:controller.signal,onProgress:({status:stage,progress})=>{if(!closed)status(stage||'가격표 글자를 읽고 있어요…',progress);}});if(closed)return;if(!result.text.trim()){error('읽을 수 있는 글자를 찾지 못했어요. 가격표를 가까이 찍거나 영역을 줄여 다시 읽어 주세요.');status('글자를 찾지 못했습니다.');return;}finish(result.text,result.confidence);}
-    catch(err){if(closed)return;if(err.name==='AbortError')status('인식을 중단했습니다. 사진을 조정하고 다시 읽을 수 있어요.');else{error(err.message||'사진을 읽지 못했습니다. 가격표 부분을 선명하게 다시 찍어 주세요.');status('인식을 완료하지 못했습니다.');}}
-    finally{if(!closed){setBusy(false);controller=null;}}
+  function finish(text, confidence=null, options={}) {
+    if(closed)return;
+    const draft=parsePriceLabel(text,options);
+    draft.rawText=text.slice(0,12000);
+    draft.confidence=confidence;
+    draft.photoPreview=canvas?preview(canvas):'';
+    clean();
+    onRecognized(draft);
+  }
+
+  async function recognize() {
+    if(!canvas || busy || closed)return;
+    error('');
+    setCrop(false);
+    setBusy(true);
+    controller=new AbortController();
+    const {signal}=controller;
+    status('가격표 글자와 바코드를 읽고 있어요…');
+    try {
+      const {recognizePriceLabel}=await import('./ocr-engine.js');
+      if(closed || signal.aborted)return;
+      const [ocr,codes]=await Promise.allSettled([
+        recognizePriceLabel(canvas,{signal,onProgress:({status:stage,progress})=>{
+          if(!closed)status(stage||'가격표 글자를 읽고 있어요…',progress);
+        }}),
+        readRetailBarcodes(canvas),
+      ]);
+      if(closed)return;
+      if(signal.aborted){status('인식을 중단했습니다.');return;}
+      const barcodes=codes.status==='fulfilled'?codes.value:[];
+      const result=ocr.status==='fulfilled'?ocr.value:null;
+      if(!result?.text.trim()&&!barcodes.length) {
+        if(ocr.status==='rejected')throw ocr.reason;
+        error('상품명이나 바코드를 읽지 못했어요. 사진에서 가격표 영역을 선택하거나 직접 입력해 주세요.');
+        status('가격표를 다시 확인해 주세요.');
+        return;
+      }
+      finish(result?.text||'',result?.confidence??null,{photo:true,blocks:result?.blocks||[],barcodes});
+    }catch(err){
+      if(closed)return;
+      error(err.message||'가격표를 읽지 못했습니다. 사진을 다시 선택해 주세요.');
+      status('사진 읽기 실패');
+    }finally{
+      if(!closed){setBusy(false);controller=null;}
+    }
   }
   async function choose(file){
     if(!file||busy)return;const current=++loadId;error('');
@@ -65,6 +105,27 @@ export function openPhotoImport({dialog,onRecognized}) {
   listen(el('photo-apply-crop'),'click',()=>{if(!selection||busy)return;const next=document.createElement('canvas');next.width=Math.max(1,Math.round(canvas.width*selection.w));next.height=Math.max(1,Math.round(canvas.height*selection.h));next.getContext('2d').drawImage(canvas,canvas.width*selection.x,canvas.height*selection.y,canvas.width*selection.w,canvas.height*selection.h,0,0,next.width,next.height);canvas=next;setCrop(false);showCanvas();recognize();});
   listen(el('photo-parse-text'),'click',()=>{const text=el('photo-text').value.trim();if(text.length<3){error('제품명과 가격이 있는 글자를 입력해 주세요.');return;}finish(text);});
   if(!dialog.open)dialog.showModal();
+}
+
+/** Read a second photo of the package without replacing the shelf-label draft. */
+export async function readBarcodePhoto(file) {
+  if(!file || (file.type && !file.type.startsWith('image/')))throw new Error('바코드가 찍힌 사진을 선택해 주세요.');
+  if(file.size>MAX_BYTES)throw new Error('20MB 이하의 사진을 선택해 주세요.');
+  let image;
+  try{
+    image=await decodeImage(file);
+  }catch{
+    throw new Error('사진을 열 수 없습니다. JPG나 PNG로 다시 선택해 주세요.');
+  }
+  let codes;
+  try{
+    codes=await readRetailBarcodes(fitCanvas(image));
+  }finally{
+    image.close?.();
+  }
+  if(codes.length>1)throw new Error('여러 바코드가 보입니다. 해당 상품의 바코드 하나만 찍어 주세요.');
+  if(!codes.length)throw new Error('바코드를 읽지 못했습니다. 줄무늬와 양쪽 여백을 포함해 다시 찍거나 아래 숫자를 직접 입력하세요.');
+  return codes[0];
 }
 
 async function decodeImage(file){if(typeof createImageBitmap==='function'){try{return await createImageBitmap(file,{imageOrientation:'from-image'});}catch{}}const url=URL.createObjectURL(file);try{return await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=url;});}finally{URL.revokeObjectURL(url);}}

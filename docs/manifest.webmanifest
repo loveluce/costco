@@ -1,12 +1,12 @@
 {
-  "name": "한눈단가 · 생필품 가격 기록",
+  "name": "한눈단가 · 우리 집 공동 가격표",
   "short_name": "한눈단가",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f7fb",
-  "theme_color": "#6355d9",
+  "background_color": "#f7f6fa",
+  "theme_color": "#332664",
   "icons": [
     {
       "src": "./icon-192.png",

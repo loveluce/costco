@@ -1,16 +1,10 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>공동 가격표 · 한눈단가</title><link rel="icon" href="./icon.svg"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./shared.css"></head>
-<body><main class="shared"><header><a href="./index.html"><img src="./icon.svg" width="32" height="32" alt="">한눈단가</a><a href="./tracker.html">내 기록 · 쇼핑몰 가격</a></header>
-<h1>공동 가격표</h1><p>가격 이력은 누구나 볼 수 있어요. 새 가격은 운영자가 발급한 초대코드로 등록하세요.</p>
-<section class="panel"><h2>가격 등록</h2><p id="access-msg" role="status">초대코드 등록 기능을 확인하는 중이에요.</p><form id="entry" method="post" hidden><fieldset disabled><div class="inputs">
-<label>상품명<input name="product" maxlength="140" required list="products"></label><datalist id="products"></datalist>
-<label>판매처·매장<input name="shop" maxlength="140" required placeholder="예: 코스트코 일산점"></label>
-<label>포장 규격<input name="pack" maxlength="140" required placeholder="예: 80매 × 10팩"></label>
-<label>총수량<input name="quantity" type="number" min=".001" max="1000000000" step="any" required placeholder="예: 800"></label>
-<label>단위<select name="unit"><option>개</option><option>매</option><option>g</option><option>mL</option><option>m</option></select></label>
-<label>가격 (원)<input name="price" type="number" min="1" max="1000000000" step="1" required></label>
-<label>초대코드<input id="invite-code" type="password" required minlength="67" maxlength="100" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="운영자에게 받은 코드"></label></div>
-<div class="actions"><button type="button" id="photo" class="button">가격표 사진 읽기</button><button class="button primary">공동 가격 저장</button></div></fieldset></form><p id="save-msg" role="status"></p></section>
-<section class="panel"><div class="actions"><h2>최근 가격 이력</h2><button class="button slim" id="refresh">새로고침</button></div><p id="read-msg" role="status"></p><div id="history"></div><button class="button" id="more" hidden>이전 기록 더 보기</button></section>
-</main><dialog id="editor" aria-label="가격표 사진 인식"></dialog><script type="module" src="./shared.js"></script></body></html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="0; url=./index.html">
+  <title>한눈단가 · 공동 가격표</title>
+</head>
+<body><a href="./index.html">우리 집 공동 가격표 열기</a></body>
+</html>
