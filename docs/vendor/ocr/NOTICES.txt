@@ -1,0 +1,33 @@
+LOCAL PRICE-LABEL OCR — THIRD-PARTY NOTICES
+
+Tesseract.js 7.0.0
+https://github.com/naptha/tesseract.js
+Apache License 2.0: TESSERACT-JS-LICENSE.txt
+The browser distributions are unmodified. Their bundled third-party notices are
+retained in tesseract.min.js.LICENSE.txt and worker.min.js.LICENSE.txt.
+
+Tesseract.js-core 7.0.0
+https://github.com/naptha/tesseract.js-core
+Apache License 2.0: TESSERACT-CORE-LICENSE.txt
+All six unmodified embedded-WASM browser builds are included: scalar, SIMD, and
+relaxed-SIMD, each with full and LSTM-only variants. The worker chooses the
+appropriate build for the device. Source maps and separate raw-WASM builds are
+omitted because the browser loader uses self-contained .wasm.js variants.
+
+English trained model
+https://github.com/tesseract-ocr/tessdata_fast
+Copied unmodified from the installed tesseract-ocr-eng language package.
+Apache License 2.0: TESSDATA-LICENSE.txt
+Installed distribution attribution: ENG-MODEL-COPYRIGHT.txt.
+
+Korean trained model — MODIFIED FILE
+https://github.com/tesseract-ocr/tessdata_best
+The official kor.traineddata model downloaded on 2026-11-21 was converted to an
+integer LSTM network with the official combine_tessdata 5.5.0 utility (-c).
+This compacted model supports the bundled browser core. It was not retrained.
+Apache License 2.0: TESSDATA-LICENSE.txt
+
+PROVENANCE.json records exact hashes, byte sizes, sources, and the conversion.
+ocr-engine.js and label-worker.js are this application's integration code.
+Photos are processed in the browser. Runtime/model requests contain no photo
+pixels. OCR confidence is an estimate, not a guarantee of correctness.

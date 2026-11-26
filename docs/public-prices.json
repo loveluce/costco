@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-23T11:34:33.504Z",
+  "offers": [
+    {
+      "id": "costco-kirkland-baby-wipes-1313100",
+      "name": "커클랜드 시그니춰 유아용 물티슈",
+      "pack": "100매 × 9팩",
+      "quantity": 900,
+      "unit": "매",
+      "url": "https://www.costco.co.kr/BeautyHouseholdPersonal-Care/Baby-BodyOral-Care/Kirkland-Signature-Baby-Wipes-100ct-x-9/p/1313100",
+      "shop": "코스트코",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:33:38.023Z",
+      "error": "현재 판매 가능한 상품인지 확인되지 않았습니다.",
+      "history": []
+    },
+    {
+      "id": "costco-kirkland-mineral-water-699072",
+      "name": "커클랜드 시그니춰 먹는 샘물",
+      "pack": "2L × 6병 × 3팩",
+      "quantity": 36000,
+      "unit": "mL",
+      "url": "https://www.costco.co.kr/Foods/Beverages/WaterClear-Soda/KS-Natural-Mineral-Water-2L-x-6-x-3-Pack/p/699072",
+      "shop": "코스트코",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:33:38.118Z",
+      "error": null,
+      "history": [
+        {
+          "day": "2026-11-23",
+          "time": "2026-11-23T11:33:38.118Z",
+          "price": 10990,
+          "title": "커클랜드 시그니춰 먹는 샘물2L x 6 x 3팩",
+          "method": "collector"
+        }
+      ]
+    },
+    {
+      "id": "costco-olitalia-organic-oil-671069",
+      "name": "올리타리아 유기농 엑스트라버진 올리브유",
+      "pack": "1L 단품",
+      "quantity": 1000,
+      "unit": "mL",
+      "url": "https://www.costco.co.kr/Foods/Processed-Food/Oils/OLITALIA-Organic-Extra-Virgin-Olive-Oil-1L/p/671069",
+      "shop": "코스트코",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:33:38.239Z",
+      "error": "할인 전 가격과 실제 적용가를 구분할 수 없어 확인을 보류했습니다.",
+      "history": []
+    },
+    {
+      "id": "coupang-olitalia-organic-oil-27869293833",
+      "name": "올리타리아 유기농 엑스트라버진 올리브유",
+      "pack": "1L × 1개",
+      "quantity": 1000,
+      "unit": "mL",
+      "url": "https://www.coupang.com/vp/products/9385934106?itemId=27869293833&vendorItemId=84117680648",
+      "shop": "쿠팡",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:33:44.938Z",
+      "error": "이 쇼핑몰은 해당 상품 페이지의 자동 수집을 허용하지 않습니다.",
+      "history": []
+    },
+    {
+      "id": "naver-olitalia-organic-oil-12973660956",
+      "name": "올리타리아 유기농 엑스트라버진 올리브유",
+      "pack": "1L × 2병",
+      "quantity": 2000,
+      "unit": "mL",
+      "url": "https://brand.naver.com/olitalia/products/12973660956",
+      "shop": "네이버",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:33:54.391Z",
+      "error": "이 쇼핑몰은 해당 상품 페이지의 자동 수집을 허용하지 않습니다.",
+      "history": []
+    },
+    {
+      "id": "kurly-olitalia-organic-oil-1002026303",
+      "name": "올리타리아 유기농 엑스트라버진 올리브유",
+      "pack": "1L 단품",
+      "quantity": 1000,
+      "unit": "mL",
+      "url": "https://www.kurly.com/goods/1002026303",
+      "shop": "마켓컬리",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:02.332Z",
+      "error": "컬리에서 현재 판매 가능한 옵션을 확인하지 못했어요.",
+      "history": []
+    },
+    {
+      "id": "xixi-olitalia-organic-oil-358",
+      "name": "올리타리아 유기농 엑스트라버진 올리브유",
+      "pack": "1L 단품",
+      "quantity": 1000,
+      "unit": "mL",
+      "url": "https://xixi.co.kr/product/detail.html?product_no=358",
+      "shop": "XIXI",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:08.373Z",
+      "error": null,
+      "history": [
+        {
+          "day": "2026-11-23",
+          "time": "2026-11-23T11:34:08.373Z",
+          "price": 24900,
+          "title": "OLITALIA 유기농 엑스트라버진 올리브유 1L",
+          "method": "collector"
+        }
+      ]
+    },
+    {
+      "id": "costco-monalisa-aquacoral-635011",
+      "name": "모나리자 비쥬 아쿠아 코랄 캡형 물티슈",
+      "pack": "70매 × 10팩",
+      "quantity": 700,
+      "unit": "매",
+      "url": "https://www.costco.co.kr/BeautyHouseholdPersonal-Care/BathFacial-Tissue/BathFacial-Tissue/Monalisa-Bijou-Coral-Wipes-70ct-x-10/p/635011",
+      "shop": "코스트코",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:14.165Z",
+      "error": null,
+      "history": [
+        {
+          "day": "2026-11-23",
+          "time": "2026-11-23T11:34:14.165Z",
+          "price": 14490,
+          "title": "모나리자 비쥬 코랄 캡형 물티슈70매 x 10팩",
+          "method": "collector"
+        }
+      ]
+    },
+    {
+      "id": "kurly-monalisa-aquacoral-1000330767",
+      "name": "모나리자 비쥬 아쿠아 코랄 캡형 물티슈",
+      "pack": "70매 × 10팩",
+      "quantity": 700,
+      "unit": "매",
+      "url": "https://www.kurly.com/goods/1000330767",
+      "shop": "마켓컬리",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:19.718Z",
+      "error": null,
+      "history": [
+        {
+          "day": "2026-11-23",
+          "time": "2026-11-23T11:34:19.718Z",
+          "price": 13900,
+          "title": "[모나리자] 55gsm 아쿠아 코랄 유아용 아기 물티슈 (캡형) (70매 X 10입)",
+          "method": "collector"
+        }
+      ]
+    },
+    {
+      "id": "costco-frosch-lemon-633774",
+      "name": "프로쉬 그린레몬 주방세제",
+      "pack": "1L × 4개",
+      "quantity": 4000,
+      "unit": "mL",
+      "url": "https://www.costco.co.kr/HomeKitchen/Cleaning-Products/Dish-Detergent/Frosch-Green-Lemon-Dish-Detergent-1L-x-4pk/p/633774",
+      "shop": "코스트코",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:27.409Z",
+      "error": "할인 전 가격과 실제 적용가를 구분할 수 없어 확인을 보류했습니다.",
+      "history": []
+    },
+    {
+      "id": "kurly-frosch-lemon-1000551882",
+      "name": "프로쉬 그린레몬 주방세제",
+      "pack": "1L 단품",
+      "quantity": 1000,
+      "unit": "mL",
+      "url": "https://www.kurly.com/goods/1000551882",
+      "shop": "마켓컬리",
+      "active": true,
+      "lastAttempt": "2026-11-23T11:34:33.504Z",
+      "error": null,
+      "history": [
+        {
+          "day": "2026-11-23",
+          "time": "2026-11-23T11:34:33.504Z",
+          "price": 10200,
+          "title": "[프로쉬] 독일 주방세제 그린레몬 1L1000ml",
+          "method": "collector"
+        }
+      ]
+    }
+  ]
+}

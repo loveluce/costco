@@ -1,0 +1,132 @@
+{
+  "prepared_at_utc": "2026-11-21T20:04:25.768248+00:00",
+  "runtime": {
+    "tesseract.js": {
+      "version": "7.0.0",
+      "source": "https://github.com/naptha/tesseract.js",
+      "license": "Apache-2.0",
+      "files": "Unmodified browser distributions copied from the installed runtime package."
+    },
+    "tesseract.js-core": {
+      "version": "7.0.0",
+      "source": "https://github.com/naptha/tesseract.js-core",
+      "license": "Apache-2.0",
+      "files": "All six unmodified embedded-WASM browser variants. Separate raw WASM and paired non-embedded JS files are omitted; embedded bytes were checked against installed raw WASM."
+    }
+  },
+  "language_models": {
+    "eng.traineddata": {
+      "source": "https://github.com/tesseract-ocr/tessdata_fast",
+      "origin": "Installed /usr/share/tesseract-ocr/5/tessdata/eng.traineddata; copied unmodified.",
+      "license": "Apache-2.0"
+    },
+    "kor.traineddata": {
+      "source": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/main/kor.traineddata",
+      "repository": "https://github.com/tesseract-ocr/tessdata_best",
+      "retrieved_on": "2026-11-21",
+      "source_size_bytes": 12528128,
+      "source_sha256": "f888d4038348a0c3d25151e7f452bda0d74ca275b18cab146798bcbb94084fff",
+      "modification": "Converted the LSTM network from floating-point to integer with the official installed combine_tessdata 5.5.0: combine_tessdata -c kor.traineddata. No retraining or text changes.",
+      "reason": "The installed Tesseract.js-core 7.0.0 SIMD build failed with the original float model; integer conversion permits the browser engine to use the model and reduces its size.",
+      "license": "Apache-2.0"
+    }
+  },
+  "local_code": [
+    "../../ocr-engine.js",
+    "label-worker.js"
+  ],
+  "privacy": "Only same-origin runtime and model files are downloaded. User images are decoded, resized, and recognized in local browser workers; the OCR module does not upload image data, write it to browser storage, or call a remote OCR service.",
+  "recognition": "Korean+English LSTM. Two layout passes; a line is replaced only by an actual second-pass line with substantial geometric overlap and a higher recognition confidence. Results require user review.",
+  "assets": [
+    {
+      "path": "ENG-MODEL-COPYRIGHT.txt",
+      "bytes": 1245,
+      "sha256": "33fb8161898e34fcf5c6b8585d6be97642d7e8f34a922e783c6c5c970d0b09ad"
+    },
+    {
+      "path": "NOTICES.txt",
+      "bytes": 1637,
+      "sha256": "783a11d153a50f0d8d31bdb95d4cb479aa8aa16da6c4de2020acc411ca124536"
+    },
+    {
+      "path": "TESSDATA-LICENSE.txt",
+      "bytes": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    {
+      "path": "TESSERACT-CORE-LICENSE.txt",
+      "bytes": 11358,
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+    },
+    {
+      "path": "TESSERACT-JS-LICENSE.txt",
+      "bytes": 11357,
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "path": "core/tesseract-core-lstm.wasm.js",
+      "bytes": 3896484,
+      "sha256": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680"
+    },
+    {
+      "path": "core/tesseract-core-relaxedsimd-lstm.wasm.js",
+      "bytes": 3905767,
+      "sha256": "861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3"
+    },
+    {
+      "path": "core/tesseract-core-relaxedsimd.wasm.js",
+      "bytes": 4697227,
+      "sha256": "843074aa5bad1cc6421b74a86201768ced9f244795e4d81435435a61a40ce535"
+    },
+    {
+      "path": "core/tesseract-core-simd-lstm.wasm.js",
+      "bytes": 3899472,
+      "sha256": "c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38"
+    },
+    {
+      "path": "core/tesseract-core-simd.wasm.js",
+      "bytes": 4690932,
+      "sha256": "6b61ef4e911b5cf57e656bbfe983d6e2b3711a02dd164154ddda064566e8e09d"
+    },
+    {
+      "path": "core/tesseract-core.wasm.js",
+      "bytes": 4687944,
+      "sha256": "0bc6ce3e5fbbd0cd89706cf2fd70960e3372f4f01ee24265b26990808aaeb286"
+    },
+    {
+      "path": "label-worker.js",
+      "bytes": 5910,
+      "sha256": "c1c40f3a0fd80bd83a5727d9584e3e4dc29089673ec5a1b77dfd3e33e2b860e8"
+    },
+    {
+      "path": "lang/eng.traineddata",
+      "bytes": 4113088,
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    },
+    {
+      "path": "lang/kor.traineddata",
+      "bytes": 2208378,
+      "sha256": "ec1749377d49ac38fb3d3cd05dd5e2a53359d329f359762bc638a81132109992"
+    },
+    {
+      "path": "tesseract.min.js",
+      "bytes": 62961,
+      "sha256": "000c27d9cd0def655f77b36c72a389c0ab13793aa31cb4d7aab56d09c0afbc7e"
+    },
+    {
+      "path": "tesseract.min.js.LICENSE.txt",
+      "bytes": 149,
+      "sha256": "cdf963ced7d25a0f98901a547647b4d6e2dbe0197fd78c87a059a87b0e542fe2"
+    },
+    {
+      "path": "worker.min.js",
+      "bytes": 111307,
+      "sha256": "576b7df7e3393e137e51849357c9adb53fe7ac1bb69bfa06cf3d61520f182c6d"
+    },
+    {
+      "path": "worker.min.js.LICENSE.txt",
+      "bytes": 466,
+      "sha256": "45f54171aeaa1d10c0c1a66f374b7bba1f02472b1487fbe892eec04f840002ac"
+    }
+  ]
+}

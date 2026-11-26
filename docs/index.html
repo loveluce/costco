@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#6355d9">
+  <meta name="description" content="자주 사는 생필품의 코스트코·쿠팡·네이버 공식몰 가격을 날짜별로 기록하고 비교하세요.">
+  <title>한눈단가 · 우리 집 생필품 가격 기록</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./tracker.css">
+</head>
+<body class="tracker">
+  <a class="skip" href="#main">본문으로 이동</a>
+  <div id="app"><main class="loading">생필품 가격 기록을 불러오고 있어요.</main></div>
+  <dialog id="editor" aria-label="상품 및 가격 기록"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript>가격 기록을 사용하려면 JavaScript를 켜 주세요.</noscript>
+  <script type="module" src="./start.js"></script>
+</body>
+</html>

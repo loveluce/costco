@@ -1,0 +1,14 @@
+.shared{max-width:850px;margin:auto;padding:1.2rem;color:#26243b}
+.shared header,.shared header a,.shared .actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.shared header{justify-content:space-between;padding:.5rem 0 1.2rem;border-bottom:1px solid #dcdce8}
+.shared header a:first-child{font-weight:750;font-size:1.15rem}
+.shared a{color:#49378e}.shared h1{margin:1.7rem 0 .3rem}.shared h2{font-size:1.18rem;margin:.2rem 0 .75rem}
+.shared section{margin:1rem 0;padding:clamp(16px,3vw,28px)}.shared fieldset{border:0;padding:0;margin:0;min-width:0}
+.shared .inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.shared label{display:grid;gap:5px;font-weight:600;font-size:.92rem}
+.shared input,.shared select{min-width:0;width:100%;padding:9px;border:1px solid #ceccdb;border-radius:7px;background:white;color:inherit;font:inherit;font-size:16px}
+.shared .actions{margin:14px 0 0;justify-content:space-between}.shared .actions h2{margin:0}
+.shared article{padding:14px 0;border-top:1px solid #dfdeea;display:grid;grid-template-columns:1fr auto;gap:.4rem 1rem;align-items:center}
+.shared article span,.shared time{font-size:.9rem;color:#565267}.shared article strong,.shared article span{overflow-wrap:anywhere}
+.shared [role=status]:empty{display:none}.shared [hidden]{display:none}.shared .price{font-weight:700;text-align:right}
+@media(max-width:620px){.shared .inputs{grid-template-columns:repeat(2,minmax(0,1fr))}.shared{padding:12px}.shared article{gap:.4rem}}
