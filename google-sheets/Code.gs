@@ -1,4 +1,10 @@
-// 가격을 보관할 시트의 확장 프로그램 → Apps Script에 넣고 setup을 실행합니다.
+// 한눈단가 · 네이버·쿠팡 온라인 가격 저장
+function setupOnlineOffers() {
+  const book = SpreadsheetApp.getActiveSpreadsheet(), store = store_();
+  if (!book || book.getId() !== store.getProperty(PREFIX+'book')) fail_('SETUP','공동 가격표 시트에서 먼저 setup을 실행하세요.');
+  locked_(function(){ openOffers_(store,true); });
+}
+
 const TAB = '공동가격이력';
 const ORIGINAL_HEAD = ['상품명','판매처·매장','포장 규격','총수량','단위','가격(원)','등록 시각','저장 요청 ID'];
 const HEAD = ORIGINAL_HEAD.concat(['코스트코 상품번호','바코드','가격 확인일','구매일','낱개 수']);
@@ -12,6 +18,7 @@ const FIELDS = ['product','shop','pack','quantity','unit','price','itemNo','barc
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('가격표 관리')
+    .addItem('온라인 가격 저장 준비', 'setupOnlineOffers')
     .addItem('공동 비밀번호 설정/변경', 'showPasswordDialog')
     .addItem('가격 인하 이메일 켜기', 'enableDropMail')
     .addItem('가격 인하 이메일 끄기', 'disableDropMail')
@@ -236,16 +243,430 @@ function list_(sheet,before) {
   return {rows,next:start>2 ? start : null};
 }
 
-function dispatch_(store, body) {
-  if (body.action === 'login') return login_(store,body);
+// Apps Script V8 has no browser URL or DOM parser. Only recognized merchant
+// detail/share routes can be requested, including on each redirect.
+function shopTarget_(raw) {
+  if (typeof raw!=='string' || raw.length>2000 || /[\s\\<>"\x00-\x1f\x7f]/.test(raw)) return null;
+  const m=raw.match(/^https:\/\/([a-z0-9.-]+)(\/[^?#]*)(?:\?([^#]*))?(?:#.*)?$/i);
+  if (!m || /(?:^|\/)\.{1,2}(?:\/|$)|%(?:2e|2f|5c|00|0a|0d)/i.test(m[2])) return null;
+  const host=m[1].toLowerCase(), path=m[2].replace(/\/$/,''), qs=m[3]||'';
+  const base='https://'+host+path;
+  if (host==='naver.me' && /^\/[a-z0-9_-]+$/i.test(path) ||
+      host==='shopping.naver.com' && /^\/(?:bridge\/link|link(?:\/[a-z0-9_-]+)?)$/i.test(path))
+    return {market:'naver',kind:'share',url:base+(qs?'?'+qs:'')};
+  if (host==='link.coupang.com' && /^\/(?:a\/[a-z0-9_-]+|re\/[a-z0-9_-]+)$/i.test(path) ||
+      host==='coupa.ng' && /^\/[a-z0-9_-]+$/i.test(path))
+    return {market:'coupang',kind:'share',url:base+(qs?'?'+qs:'')};
+  let market,sku,origin,route,kind='detail';
+  const cp=path.match(/^\/(?:vp|vm)\/products\/([1-9]\d*)$/);
+  const ns=path.match(/^\/([a-z0-9_%.-]+)\/products\/([1-9]\d*)$/i);
+  const win=path.match(/^\/(?:window-products\/[a-z0-9_-]+|ns\/products)\/([1-9]\d*)$/i);
+  const catalog=path.match(/^\/(?:catalog|ns\/catalog)\/([1-9]\d*)$/);
+  if (/^(?:www\.|m\.)?coupang\.com$/.test(host) && cp) {
+    market='coupang'; sku=cp[1]; origin='www.coupang.com'; route='/vp/products/'+sku;
+  } else if (/^(?:m\.)?(?:smartstore|brand)\.naver\.com$/.test(host) && ns) {
+    market='naver'; sku=ns[2]; origin=host.replace(/^m\./,''); route=path;
+  } else if (/^(?:m\.|search\.|msearch\.)?shopping\.naver\.com$/.test(host) && (win || catalog)) {
+    market='naver'; sku=(win||catalog)[1]; origin=host; route=path; kind=catalog?'catalog':'detail';
+  } else return null;
+  const options={};
+  for (const pair of qs.split('&')) {
+    const split=pair.indexOf('=');
+    if (split<=0) continue;
+    const name=pair.slice(0,split), value=pair.slice(split+1);
+    const isOption=market==='coupang' ? /^(?:itemId|vendorItemId)$/.test(name) : /^(?:option|variant|sku)[a-z0-9_]*$/i.test(name);
+    if (!isOption) continue;
+    if (Object.prototype.hasOwnProperty.call(options,name) || !/^[\w%.,+-]{1,240}$/.test(value) ||
+        (market==='coupang' && !/^[1-9]\d*$/.test(value))) return null;
+    options[name]=value;
+  }
+  const selected=Object.keys(options).sort().map(k=>k+'='+options[k]).join('&');
+  return {market,sku,kind,options,route,origin,url:'https://'+origin+route+(selected?'?'+selected:'')};
+}
+
+function absoluteShopUrl_(raw,base) {
+  if (typeof raw!=='string') return '';
+  const value=raw.trim().replace(/&amp;/gi,'&');
+  if (value.startsWith('//')) return 'https:'+value;
+  if (value.startsWith('/')) return base.match(/^https:\/\/[^/]+/)[0]+value;
+  if (value.startsWith('?')) return base.split('?')[0]+value;
+  return value;
+}
+
+function htmlText_(value) {
+  if (typeof value !== 'string') return '';
+  const chars={amp:'&',quot:'"',apos:"'",lt:'<',gt:'>',nbsp:' '};
+  return value.replace(/<[^>]*>/g,' ').replace(/&(amp|quot|apos|lt|gt|nbsp|#\d+|#x[0-9a-f]+);/gi,(all,key)=>{
+    if (key[0]!=='#') return chars[key.toLowerCase()]||all;
+    const n=key[1].toLowerCase()==='x' ? parseInt(key.slice(2),16) : Number(key.slice(1));
+    return n>=32 && n<=0x10ffff ? String.fromCodePoint(n) : ' ';
+  }).replace(/[\s\u0000-\u001f\u007f]+/g,' ').trim();
+}
+
+function attributes_(tag) {
+  const obj=Object.create(null);
+  const pair=/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/g;
+  let m; while ((m=pair.exec(tag))) obj[m[1].toLowerCase()]=m[2]??m[3]??m[4];
+  return obj;
+}
+
+function sameDetail_(target,raw,strict) {
+  const other=shopTarget_(absoluteShopUrl_(raw,target.url));
+  if (!other || target.market!==other.market || target.sku!==other.sku || target.route!==other.route ||
+      target.origin!==other.origin) return false;
+  return Object.keys(target.options).every(k=>other.options[k]===target.options[k] || (!strict && other.options[k]===undefined));
+}
+
+function onlyValue_(arr) {
+  const vals=Array.from(new Set(arr));
+  return vals.length===1 ? vals[0] : null;
+}
+
+function metadataWon_(value,minimum) {
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.0+)?$/.test(String(value??'').trim())) return null;
+  const n=Number(String(value).replace(/,/g,''));
+  return Number.isSafeInteger(n) && n>=minimum && n<=1e9 ? n : null;
+}
+
+function pieceHint_(title,product) {
+  const explicit=product && product.numberOfItems;
+  if (explicit!=null) return metadataWon_(explicit,1);
+  // Keep a single labelled pack count. Unit prices, variants and multipacks
+  // with several different count bases need the shopper's choice.
+  if (/[~∼/+]|랜덤|선택|옵션|개당|병당|팩당/.test(title)) return null;
+  const matches=Array.from(title.matchAll(/(?:^|[^\d.,])([1-9]\d{0,5})\s*(?:개입|병입|개|병|캔|봉|롤|팩|매|입)(?=$|[\s,()[\]×xX])/gu));
+  if (matches.length!==1 || /\d\s*(?:개|병|팩|봉|매)?\s*[x×*]\s*\d/i.test(title)) return null;
+  return Number(matches[0][1]);
+}
+
+function schemaType_(node,t) {
+  return node && [].concat(node['@type']||[]).some(v=>typeof v==='string' && v.replace(/^https?:\/\/schema\.org\//i,'')===t);
+}
+
+function shippingFee_(values) {
+  const rates=[].concat(values||[]);
+  if (!rates.length) return null;
+  return onlyValue_(rates.map(entry=>{
+    if (!entry || entry.shippingConditions || entry.doesNotShip || entry.eligibleTransactionVolume ||
+        entry.validForMemberTier || entry.shippingRateSettings || entry.weight || entry.orderValue) return null;
+    const area=entry.shippingDestination;
+    if (area && (area.addressCountry!=='KR' || Object.keys(area).some(k=>k!=='@type' && k!=='addressCountry'))) return null;
+    const rate=entry.shippingRate;
+    if (!rate || rate.currency!=='KRW' || Object.keys(rate).some(k=>!['@type','currency','value'].includes(k))) return null;
+    return metadataWon_(rate.value,0);
+  }));
+}
+
+function shopMetadata_(html,target) {
+  const meta=Object.create(null), products=[];
+  let canonical='';
+  const head=(html.match(/<head\b[^>]*>([\s\S]*?)<\/head\s*>/i)||[])[1] || html.slice(0,150000);
+  for (const [tag] of head.matchAll(/<(?:meta|link)\b[^>]{1,5000}>/gi)) {
+    const a=attributes_(tag), k=(a.property||a.name||'').toLowerCase();
+    if (k && a.content!==undefined) (meta[k]||(meta[k]=[])).push(htmlText_(a.content));
+    if (a.rel==='canonical' && a.href) canonical=htmlText_(a.href);
+  }
+  function add(node,depth) {
+    if (!node || typeof node!=='object' || depth>6 || products.length>60) return;
+    if (Array.isArray(node)) { node.forEach(n=>add(n,depth+1)); return; }
+    if (schemaType_(node,'Product')) products.push(node);
+    if (node['@graph']) add(node['@graph'],depth+1);
+    if (node.mainEntity) add(node.mainEntity,depth+1);
+  }
+  for (const [,attrs,json] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    if ((attributes_(attrs).type||'').toLowerCase().split(';')[0]!=='application/ld+json') continue;
+    try { add(JSON.parse(json),0); } catch (_) { /* Some pages contain multiple independent snippets. */ }
+  }
+  const pageLink=onlyValue_(meta['og:url']||[])||canonical;
+  const pageMatches=pageLink ? sameDetail_(target,pageLink,false) : true;
+  const optionKeys=Object.keys(target.options);
+  const selectedPage=pageMatches && (!optionKeys.length || (pageLink && sameDetail_(target,pageLink,true)));
+  const guessTitle=pageMatches && (pageLink || (meta['og:type']||[]).some(t=>/product/i.test(t))) ? onlyValue_(meta['og:title']||[]) : '';
+  const titles=[], amounts=[], fees=[];
+  let ambiguous=false;
+  for(const p of products) {
+    const pl=p.url || p['@id'];
+    if (pl && !sameDetail_(target,pl,false)) continue;
+    if (!pl && String(p.productID||p.sku||'')!==target.sku && (!pageMatches || products.length!==1)) continue;
+    if (p.name) titles.push(htmlText_(p.name));
+    if (p.hasVariant || p.isVariantOf && !optionKeys.length) ambiguous=true;
+    const offers=[].concat(p.offers||[]);
+    if (offers.length>1 && !optionKeys.length) ambiguous=true;
+    for(const o of offers) {
+      if (schemaType_(o,'AggregateOffer')) { ambiguous=true; continue; }
+      if (!schemaType_(o,'Offer')) continue;
+      if (o.url && !sameDetail_(target,o.url,false)) continue;
+      const source=o.url || pl;
+      const identifies=source ? sameDetail_(target,source,true) : selectedPage;
+      if (!identifies || (offers.length>1 && !o.url)) continue;
+      const specs=[].concat(o.priceSpecification||[]);
+      const expired=['priceValidUntil','validThrough','availabilityEnds','validFrom','availabilityStarts'].some(key=>{
+        if (!o[key]) return false;
+        const end=key!=='validFrom' && key!=='availabilityStarts';
+        const value=String(o[key]);
+        const t=Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value+(end?'T23:59:59+09:00':'T00:00:00+09:00') : value);
+        return !Number.isFinite(t) || (end ? t<Date.now() : t>Date.now());
+      });
+      if (o.priceCurrency!=='KRW' || expired || o.validForMemberTier || o.eligibleQuantity ||
+          o.availability && !/(?:^|\/)(?:InStock|LimitedAvailability)$/.test(o.availability) ||
+          specs.some(s=>s && (s.validForMemberTier || s.eligibleQuantity || s.eligibleTransactionVolume))) {
+        ambiguous=true; continue;
+      }
+      amounts.push(metadataWon_(o.price,1));
+      fees.push(shippingFee_(o.shippingDetails));
+    }
+  }
+  const title=(onlyValue_(titles)||guessTitle||'').slice(0,200);
+  const suggestsOptions=target.market==='naver' && /"optionUsable"\s*:\s*true|"optionCombinations"\s*:\s*\[\s*\{/.test(html);
+  const result={title,pieces:null,price:null,shipping:null};
+  if (!title || !pageMatches || target.kind==='catalog' || ambiguous || suggestsOptions || new Set(titles).size>1 ||
+      /out.?of.?stock|sold.?out|품절/i.test((meta['product:availability']||[]).join(' '))) return result;
+  if (amounts.length || selectedPage) result.pieces=pieceHint_(title,products.length===1?products[0]:null);
+  const ogCurrency=onlyValue_(meta['product:price:currency']||meta['og:price:currency']||[]);
+  const ogPrices=meta['product:price:amount']||meta['og:price:amount']||[];
+  if (selectedPage && pageLink && ogCurrency==='KRW' && ogPrices.length)
+    amounts.push(...ogPrices.map(n=>metadataWon_(n,1)));
+  result.price=onlyValue_(amounts);
+  if (result.price!==null) result.shipping=onlyValue_(fees);
+  return result;
+}
+
+function inspectOffer_(url) {
+  let target=shopTarget_(url);
+  const market=target.market, seen=new Set(), deadline=Date.now()+18000;
+  for(let hop=0;hop<5;hop++) {
+    if (Date.now()>=deadline || seen.has(target.url)) break;
+    seen.add(target.url);
+    let response;
+    try {
+      response=UrlFetchApp.fetch(target.url,{method:'get',followRedirects:false,muteHttpExceptions:true,
+        timeoutSeconds:Math.max(1,Math.min(7,Math.ceil((deadline-Date.now())/1000))),
+        headers:{Accept:'text/html,application/xhtml+xml','Accept-Language':'ko-KR,ko;q=0.9'}});
+    } catch (_) { break; }
+    const status=response.getResponseCode(), headers=response.getAllHeaders();
+    const header=k=>{const key=Object.keys(headers).find(name=>name.toLowerCase()===k); return key?String(headers[key]):'';};
+    let redirect;
+    if ([301,302,303,307,308].includes(status)) redirect=header('location');
+    else {
+      if (status!==200 || !/text\/html|application\/xhtml\+xml/i.test(header('content-type')) || Number(header('content-length'))>5e6) break;
+      const html=response.getContentText();
+      if (html.length>5e6) break;
+      if (target.kind!=='share') return {url:target.url,fields:shopMetadata_(html,target)};
+      // Some official short links use an HTML refresh instead of an HTTP redirect.
+      for(const [tag] of html.slice(0,80000).matchAll(/<(?:meta|link)\b[^>]+>/gi)) {
+        const a=attributes_(tag);
+        const detail=a.rel==='canonical' ? a.href : ['og:url','al:web:url'].includes(a.property) ? a.content : '';
+        if (detail) {
+          const next=shopTarget_(absoluteShopUrl_(detail,target.url));
+          if (!redirect && next && next.market===market && next.kind!=='share') redirect=next.url;
+        }
+        if ((a['http-equiv']||'').toLowerCase()==='refresh') {
+          const match=(a.content||'').match(/^\s*\d+\s*;\s*url\s*=\s*(.+?)\s*$/i);
+          if (match) { redirect=match[1]; break; }
+        }
+      }
+    }
+    const next=shopTarget_(absoluteShopUrl_(redirect,target.url));
+    if (!next || next.market!==market || target.kind!=='share' && !sameDetail_(target,next.url,true)) break;
+    target=next;
+  }
+  return null;
+}
+
+const OFFER_TAB = '온라인가격이력';
+const OFFER_HEADERS = ['코스트코 상품명','쇼핑몰','온라인 상품명·옵션','상품 링크','판매가(원)','묶음 개수','배송비(원)','가격 확인일','코스트코 상품번호','바코드','코스트코 포장 규격','연결 기록 ID','온라인 기록 ID','수정 시각','저장 요청 ID','확인한 상품 주소'];
+const MARKET_NAMES = {naver:'네이버',coupang:'쿠팡'};
+
+function openOffers_(store, create) {
+  const bookId = store.getProperty(PREFIX+'book');
+  if (!bookId) fail_('SETUP','먼저 구글 시트에서 setup을 실행하세요.');
+  const book = SpreadsheetApp.openById(bookId);
+  let sheet = book.getSheetByName(OFFER_TAB);
+  if (!sheet && create) sheet = book.insertSheet(OFFER_TAB);
+  if (!sheet) return null;
+  if (sheet.getLastRow() === 0 && create) {
+    if (sheet.getMaxColumns() < OFFER_HEADERS.length)
+      sheet.insertColumnsAfter(sheet.getMaxColumns(),OFFER_HEADERS.length-sheet.getMaxColumns());
+    sheet.getRange(1,1,1,OFFER_HEADERS.length).setValues([OFFER_HEADERS]);
+    sheet.setFrozenRows(1);
+  }
+  if (!sheet.getLastRow()) return null;
+  if (sheet.getMaxColumns() < OFFER_HEADERS.length ||
+      JSON.stringify(sheet.getRange(1,1,1,OFFER_HEADERS.length).getValues()[0]) !== JSON.stringify(OFFER_HEADERS))
+    fail_('SETUP','온라인가격이력 탭의 첫 행 제목을 확인하세요.');
+  return sheet;
+}
+
+function offerFromCells_(cells) {
+  const [product,shop,title,url,price,pieces,shipping,day,itemNo,barcode,pack,parent,id,updated,op,resolved] = cells;
+  if (!ID.test(String(id))) return null;
+  const market = shop === '쿠팡' ? 'coupang' : shop === '네이버' ? 'naver' : '';
+  if (!market) return null;
+  const row = {id:String(id),market,product:String(product),title:String(title||''),url:String(url||''),
+    price:price===''?null:price,pieces:pieces===''?null:pieces,shipping:shipping===''?null:shipping,
+    day:day instanceof Date?kst_(day):String(day),itemNo:String(itemNo ?? ''),barcode:String(barcode ?? ''),
+    pack:String(pack||''),parent:String(parent||''),updated:updated instanceof Date?updated.toISOString():String(updated),
+    op:String(op||''),resolved:String(resolved||'')};
+  row.version = hash_(JSON.stringify(row));
+  return row;
+}
+
+function offerAt_(sheet, pos) {
+  return offerFromCells_(sheet.getRange(pos,1,1,OFFER_HEADERS.length).getValues()[0]);
+}
+
+function findOffer_(sheet,id) {
+  const last=sheet.getLastRow();
+  if (last < 2) return null;
+  const cell=sheet.getRange(2,13,last-1,1).createTextFinder(id).matchEntireCell(true).matchCase(true).findNext();
+  if (!cell) return null;
+  const pos=cell.getRow();
+  return {pos,row:offerAt_(sheet,pos)};
+}
+
+function listOffers_(store,before) {
+  const sheet=openOffers_(store,false), last=sheet ? sheet.getLastRow() : 0;
+  const cursor = before == null ? last+1 : before;
+  if (!Number.isSafeInteger(cursor) || cursor<1) fail_('INPUT','온라인 기록 위치를 확인하세요.');
+  const end=Math.min(last,cursor-1), start=Math.max(2,end-9);
+  const rows=end<start ? [] : sheet.getRange(start,1,end-start+1,OFFER_HEADERS.length).getValues()
+    .map(offerFromCells_).filter(Boolean).reverse();
+  return {rows,next:start>2?start:null};
+}
+
+function offerNumber_(value,min,label) {
+  if (value == null || value === '') return null;
+  if (!Number.isSafeInteger(value) || value<min || value>1e9) fail_('INPUT',label+' 값을 확인하세요.');
+  return value;
+}
+
+function readOfferInput_(input) {
+  if (!input || !ID.test(input.id) || !ID.test(input.op)) fail_('INPUT','온라인 기록 번호를 확인하세요.');
+  const target=input.url ? shopTarget_(input.url) : null;
+  if (input.url && !target) fail_('INPUT','네이버 또는 쿠팡 상품의 상세 주소나 공유 링크를 넣어 주세요.');
+  const market=target ? target.market : input.market;
+  if (market!=='naver' && market!=='coupang') fail_('INPUT','쇼핑몰을 확인하세요.');
+  const row={id:input.id,op:input.op,market,product:text_(input.product,140,'코스트코 상품명'),
+    parent:text_(input.parent,36,'연결 기록'),itemNo:text_(input.itemNo,32,'상품번호'),barcode:text_(input.barcode,80,'바코드'),
+    pack:text_(input.pack,140,'규격'),title:text_(input.title,200,'온라인 상품명'),url:target ? target.url : '',
+    resolved:'',day:day_(input.day)||kst_(new Date()),price:offerNumber_(input.price,1,'판매가'),
+    pieces:offerNumber_(input.pieces,1,'묶음 개수'),shipping:offerNumber_(input.shipping,0,'배송비')};
+  if (row.parent && !ID.test(row.parent)) fail_('INPUT','연결 기록 번호를 확인하세요.');
+  if (!row.url && !row.product && !row.title && !row.itemNo && !row.barcode) fail_('INPUT','상품명이나 상품 링크를 입력하세요.');
+  if (!row.url && row.price===null) fail_('INPUT','저장할 상품 링크나 판매가를 입력하세요.');
+  return row;
+}
+
+function sheetLiteral_(s) { return typeof s === 'string' && /^[=']/.test(s) ? "'"+s : s; }
+
+function writeOffer_(sheet,pos,row) {
+  if (pos>sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(),100);
+  const blank = value => value == null ? '' : value;
+  const ts=new Date();
+  const cells=[row.product,MARKET_NAMES[row.market],row.title,row.url,blank(row.price),blank(row.pieces),blank(row.shipping),
+    row.day,row.itemNo,row.barcode,row.pack,row.parent,row.id,ts,row.op,row.resolved];
+  sheet.getRange(pos,1,1,4).setNumberFormat('@');
+  sheet.getRange(pos,8,1,6).setNumberFormat('@');
+  sheet.getRange(pos,14).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sheet.getRange(pos,15,1,2).setNumberFormat('@');
+  sheet.getRange(pos,1,1,cells.length).setValues([cells.map(sheetLiteral_)]);
+  SpreadsheetApp.flush();
+  return offerAt_(sheet,pos);
+}
+
+function sameOfferProduct_(a,b) {
+  if (a.itemNo && b.itemNo && a.itemNo!==b.itemNo || a.barcode && b.barcode && a.barcode!==b.barcode) return false;
+  if (a.parent && a.parent===b.parent || a.itemNo && a.itemNo===b.itemNo || a.barcode && a.barcode===b.barcode) return true;
+  const norm=s=>s.normalize('NFKC').toLowerCase().replace(/\s+/g,'');
+  if (!a.product && !b.product && !a.itemNo && !b.itemNo && !a.barcode && !b.barcode) return true;
+  return !!a.product && norm(a.product)===norm(b.product) && norm(a.pack)===norm(b.pack);
+}
+
+function sameDayOffer_(sheet,row) {
+  const last=sheet.getLastRow();
+  if (last<2 || !row.url) return null;
+  for (const col of [4,16]) {
+    const hits=sheet.getRange(2,col,last-1,1).createTextFinder(row.url).matchEntireCell(true).matchCase(true).findAll();
+    for (const cell of hits) {
+      const old=offerAt_(sheet,cell.getRow());
+      if (old && old.market===row.market && old.day===row.day && sameOfferProduct_(old,row)) return old;
+    }
+  }
+  return null;
+}
+
+function storeOffer_(store,body,importing) {
+  const row=readOfferInput_(body.row), sheet=openOffers_(store,true);
+  if (importing && row.title && row.pieces==null) row.pieces=pieceHint_(row.title,null);
+  if (importing && !row.url) fail_('INPUT','상품 링크를 입력하세요.');
+  const found=findOffer_(sheet,row.id);
+  if (found) {
+    if (found.row.op===row.op) return found.row;
+    if (body.version!==found.row.version) fail_('CONFLICT','다른 기기에서 수정했어요. 공동 기록을 새로고침하고 다시 열어 주세요.');
+    if (found.row.market!==row.market) fail_('INPUT','다른 쇼핑몰은 새 가격으로 등록하세요.');
+    if (row.url===found.row.url) row.resolved=found.row.resolved;
+  } else {
+    if (body.version) fail_('CONFLICT','수정할 기록이 없어졌어요. 공동 기록을 새로고침하세요.');
+    if (importing) {
+      const existing=sameDayOffer_(sheet,row);
+      if (existing) {
+        // A richer share from the same day may complete an earlier link-only record.
+        let changed=false;
+        for (const key of ['title','price','pieces','shipping']) {
+          if ((existing[key]==='' || existing[key]==null) && row[key]!=null && row[key]!=='') {
+            existing[key]=row[key]; changed=true;
+          }
+        }
+        if (!changed) return existing;
+        existing.op=row.op;
+        return writeOffer_(sheet,findOffer_(sheet,existing.id).pos,existing);
+      }
+    }
+  }
+  return writeOffer_(sheet,found ? found.pos : sheet.getLastRow()+1,row);
+}
+
+function updateCostco_(store,body) {
+  const sheet=openSheet_(store), row=parse_(body.row), old=findSaved_(sheet,row.submission);
+  if (!old) fail_('CONFLICT','이 기록을 찾지 못했어요. 공동 기록을 새로고침하세요.');
+  if (FIELDS.every(key=>old[key]===row[key])) return old;
+  if (!body.original || body.original.submission!==row.submission || !FIELDS.every(key=>old[key]===body.original[key]))
+    fail_('CONFLICT','다른 기기에서 수정했어요. 공동 기록을 새로고침하고 다시 열어 주세요.');
+  const n=old.seq;
+  const values=[row.product,row.shop,row.pack,row.quantity??'',row.unit,row.price,new Date(old.saved_at),row.submission,
+    row.itemNo,row.barcode,row.observedOn,row.purchasedOn,row.pieceCount??''];
+  sheet.getRange(n,1,1,3).setNumberFormat('@');
+  sheet.getRange(n,9,1,4).setNumberFormat('@');
+  sheet.getRange(n,1,1,values.length).setValues([values.map(sheetLiteral_)]);
+  SpreadsheetApp.flush();
+  return rowData_(n,sheet.getRange(n,1,1,HEAD.length).getValues()[0]);
+}
+
+function requireSession_(store, body) {
   const key = sessionKey_(body.token);
   const value = store.getProperty(key);
   if (!validSession_(value,Date.now())) {
     if (value !== null) store.deleteProperty(key);
     fail_('AUTH','로그인이 만료됐습니다. 공동 비밀번호를 다시 입력하세요.');
   }
+  return key;
+}
+
+function dispatch_(store, body) {
+  if (body.action === 'login') return login_(store,body);
+  const key = requireSession_(store,body);
   if (body.action === 'logout') { store.deleteProperty(key); return {}; }
-  if (body.action === 'list') return list_(openSheet_(store),body.before);
+  if (body.action === 'list') {
+    const page=list_(openSheet_(store),body.before);
+    if (body.includeOffers === true && body.before == null) {
+      try { page.offers=listOffers_(store,null); }
+      catch (err) { page.offersError=err.publicCode ? err.message : '온라인 기록을 불러오지 못했어요.'; }
+    }
+    return page;
+  }
+  if (body.action === 'listOffers') return listOffers_(store,body.before);
+  if (body.action === 'saveOffer') return storeOffer_(store,body,false);
+  if (body.action === 'updatePrice') return updateCostco_(store,body);
   if (body.action === 'save') return append_(openSheet_(store),parse_(body.row));
   fail_('INPUT','지원하지 않는 요청입니다.');
 }
@@ -257,23 +678,56 @@ function output_(value, callback) {
   return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }
 
-function doPost(e) {
-  if (!e || !e.postData || !e.postData.contents || e.postData.contents.length>8192) return output_({ok:false});
-  let body;
-  try { body = JSON.parse(e.postData.contents); } catch (_) { return output_({ok:false}); }
-  if (!body || typeof body.ticket !== 'string' || !KEY.test(body.ticket)) return output_({ok:false});
-  return locked_(function() {
-    const store = store_(), cache = CacheService.getScriptCache();
-    let reply;
-    try { reply = {ok:true,data:dispatch_(store,body)}; }
-    catch (err) {
-      reply = {ok:false,code:err.publicCode || 'SERVER',message:err.publicCode ? err.message : '시트에 접근하지 못했습니다. 운영자가 연결과 권한을 확인해 주세요.'};
+function reply_(body, action) {
+  const store=store_(), cache=CacheService.getScriptCache();
+  let reply;
+  try { reply={ok:true,data:action(store)}; }
+  catch (err) { reply={ok:false,code:err.publicCode || 'SERVER',message:err.publicCode ? err.message : '시트에 접근하지 못했어요. 배포 권한을 확인하고 다시 시도하세요.'}; }
+  cache.put('reply:'+hash_(body.ticket),JSON.stringify({epoch:store.getProperty(PREFIX+'epoch'),reply}),90);
+  return output_({accepted:true});
+}
+
+function importOfferPost_(body) {
+  let initial, info;
+  try {
+    // Commit the link first. Other family members can use the sheet while the merchant responds.
+    initial=locked_(function() {
+      const store=store_();
+      requireSession_(store,body);
+      return storeOffer_(store,body,true);
+    });
+    try { info=inspectOffer_(initial.url); } catch (_) { info=null; }
+  } catch (err) { return locked_(()=>reply_(body,()=>{throw err;})); }
+  return locked_(()=>reply_(body,store=>{
+    requireSession_(store,body);
+    const sheet=openOffers_(store,true), found=findOffer_(sheet,initial.id);
+    if (!found) fail_('CONFLICT','저장 중에 기록이 삭제됐어요. 공동 기록을 새로고침하세요.');
+    const row=found.row;
+    if (row.version!==initial.version) return {row,message:'다른 곳에서 수정한 최신 값을 표시했어요.'};
+    let changed=false;
+    if (info) {
+      for (const field of ['title','price','pieces','shipping']) {
+        const value=info.fields[field];
+        if ((row[field]==='' || row[field]==null) && value!=null && value!=='') {
+          row[field]=value; changed=true;
+        }
+      }
+      if (info.url!==row.resolved) { row.resolved=info.url; changed=true; }
     }
-    // The browser proposes its own random session token. No password or session
-    // token is ever sent by URL or returned in a JSONP response.
-    cache.put('reply:'+hash_(body.ticket),JSON.stringify({epoch:store.getProperty(PREFIX+'epoch'),reply}),90);
-    return output_({accepted:true});
-  });
+    const saved=changed ? writeOffer_(sheet,found.pos,row) : row;
+    const missing=[['price','판매가'],['pieces','묶음 개수'],['shipping','배송비']].filter(([key])=>saved[key]==null).map(([,name])=>name);
+    const message=missing.length ? '공동 기록에 링크를 저장했어요. '+missing.join('·')+'를 확인해 입력하세요.' : '공동 기록에 상품 링크와 가격을 저장했어요.';
+    return {row:saved,message};
+  }));
+}
+
+function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents || e.postData.contents.length>16384) return output_({ok:false});
+  let body;
+  try { body=JSON.parse(e.postData.contents); } catch (_) { return output_({ok:false}); }
+  if (!body || typeof body.ticket!=='string' || !KEY.test(body.ticket)) return output_({ok:false});
+  if (body.action==='importOffer') return importOfferPost_(body);
+  return locked_(()=>reply_(body,store=>dispatch_(store,body)));
 }
 
 function doGet(e) {
